@@ -1,0 +1,6 @@
+{
+  "name": "OctoPulse AI - GitHub Analyzer & Intelligence Hub",
+  "description": "Production-grade AI-powered GitHub Repository Analyzer with deep code quality, security scanning, commit analytics, dependency trees, contributor metrics, real-time AI code chat, and multi-repo benchmarking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
