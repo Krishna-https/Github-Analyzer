@@ -32,12 +32,3 @@
     border-radius: 100px;
   }
 }
-
-@layer utilities {
-  .text-gradient-primary {
-    background: linear-gradient(135deg, #aff33e 0%, #86efac 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-}
