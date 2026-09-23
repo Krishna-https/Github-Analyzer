@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+"use client";
+import { useState, type FormEvent } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   ScanLine,
   BrainCircuit,
   ShieldAlert,
-  Github,
+  // Github,
   ArrowRight,
   Wand2,
   FileCode,
@@ -45,13 +47,13 @@ const flow = [
 export default function Home() {
   const { setRepoUrl, startAnalysis } = useAnalysis()
   const [url, setUrl] = useState('')
-  const navigate = useNavigate()
+  const router = useRouter()
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     setRepoUrl(url.trim() || 'https://github.com/acme/taskflow')
     startAnalysis()
-    navigate('/analyze')
+    router.push('/analyze')
   }
 
   return (
@@ -93,7 +95,8 @@ export default function Home() {
           <form onSubmit={onSubmit} className="mx-auto mt-10 max-w-2xl">
             <div className="flex flex-col gap-3 sm:flex-row">
               <div className="flex flex-1 items-center gap-2.5 rounded-xl border border-edge bg-card px-4 py-3.5 transition-colors focus-within:border-primary/50">
-                <Github className="h-4 w-4 shrink-0 text-white/35" />
+                {/* <Github className="h-4 w-4 shrink-0 text-white/35" /> */}
+                Github
                 <input
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
@@ -125,7 +128,8 @@ export default function Home() {
         <div className="mx-auto mt-16 max-w-4xl">
           <div className="rounded-2xl border border-edge bg-card p-6 sm:p-8">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/45">
-              <Github className="h-3.5 w-3.5" />
+              {/* <Github className="h-3.5 w-3.5" /> */}
+              Github
               Preview — repository pipeline
             </div>
             <div className="mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -169,7 +173,7 @@ export default function Home() {
             {features.map((f) => (
               <Link
                 key={f.title}
-                to={f.to}
+                href={f.to}
                 className="group rounded-2xl border border-edge bg-card p-6 transition-all hover:border-primary/30 hover:shadow-lime-glow"
               >
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">

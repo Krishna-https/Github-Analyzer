@@ -1,4 +1,4 @@
-import type { SourceFile } from '../lib/types'
+import type { SourceFile } from '@/lib/types'
 
 interface DirDef {
   dir: string

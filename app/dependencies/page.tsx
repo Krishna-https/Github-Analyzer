@@ -1,6 +1,6 @@
-import { api } from '../app/api/client'
+import { api } from '@/lib/api'
 import { Card, SectionTitle } from '@/components/ui/Card'
-import { depStatusColor, depStatusLabel } from '../lib/colors'
+import { depStatusColor, depStatusLabel } from '@/lib/colors'
 import { Package } from 'lucide-react'
 
 export default function Dependencies() {

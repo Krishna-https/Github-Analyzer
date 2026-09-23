@@ -12,7 +12,7 @@ import type {
   Repository,
   Rule,
   SecurityFinding,
-} from '../../lib/types'
+} from './types'
 import {
   analysisSteps,
   complexityBuckets,
@@ -26,8 +26,8 @@ import {
   mockRepository,
   mockRules,
   mockSecurityFindings,
-} from '../../data/mockData'
-import { mockSourceFiles, buildTree, type FileTreeNode } from '../../data/mockSourceFiles'
+} from '../data/mockData'
+import { mockSourceFiles, buildTree, type FileTreeNode } from '../data/mockSourceFiles'
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 

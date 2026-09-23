@@ -1,3 +1,4 @@
+"use client";
 import { createContext, useContext, useState, type ReactNode } from 'react'
 
 interface AnalysisState {
@@ -10,7 +11,7 @@ interface AnalysisState {
   markReviewed: (id: string) => void
 }
 
-const Ctx = createContext<AnalysisState>(null!)
+const Ctx = createContext<AnalysisState | null>(null)
 
 export function AnalysisProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AnalysisState['status']>('idle')
@@ -31,5 +32,9 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAnalysis() {
-  return useContext(Ctx)
+  const context = useContext(Ctx)
+  if (!context) {
+    throw new Error('useAnalysis must be used within an AnalysisProvider')
+  }
+  return context
 }

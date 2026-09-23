@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
-import { api } from '../app/api/client'
+import { api } from '@/lib/api'
 import { Card, SectionTitle } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { SeverityBadge } from '@/components/ui/Badge'

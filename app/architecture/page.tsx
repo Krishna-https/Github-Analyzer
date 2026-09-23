@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ArrowDown, Database, Layers, FileCode, Boxes } from 'lucide-react'
-import { api } from '../app/api/client'
+import { api } from '@/lib/api'
 import { Card, SectionTitle } from '@/components/ui/Card'
 
 const layerIcons: Record<string, typeof FileCode> = {

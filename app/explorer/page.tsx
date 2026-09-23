@@ -1,16 +1,17 @@
 import { useState } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { ChevronRight, Folder, FileCode, Layers } from 'lucide-react'
-import { api } from '../app/api/client'
-import { buildTree, type FileTreeNode } from '../data/mockSourceFiles'
+import { api } from '@/lib/api'
+import { buildTree, type FileTreeNode } from '@/data/mockSourceFiles'
 import { Card } from '@/components/ui/Card'
- 
+
 const tree = buildTree()
 
 function TreeItem({ node, depth = 0 }: { node: FileTreeNode; depth?: number }) {
   const [open, setOpen] = useState(depth < 2)
-  const [params] = useSearchParams()
-  const selected = params.get('file') === node.path
+  const { file } = useParams()
+  const selected = file === node.path
   const indent = depth * 16
 
   if (node.type === 'dir') {
@@ -40,7 +41,7 @@ function TreeItem({ node, depth = 0 }: { node: FileTreeNode; depth?: number }) {
 
   return (
     <Link
-      to={`/explorer?file=${encodeURIComponent(node.path ?? '')}`}
+      href={`/explorer?file=${encodeURIComponent(node.path ?? '')}`}
       className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs font-mono transition-colors ${
         selected
           ? 'bg-primary/10 text-primary'
@@ -55,9 +56,8 @@ function TreeItem({ node, depth = 0 }: { node: FileTreeNode; depth?: number }) {
 }
 
 export default function Explorer() {
-  const [params] = useSearchParams()
-  const selectedPath = params.get('file') ?? 'src/services/task.ts'
-  const file = api.getFile(selectedPath)
+  const { file: selectedPath } = useParams()
+  const file = api.getFile(selectedPath as string)
 
   return (
     <div className="space-y-6 animate-fade-up">

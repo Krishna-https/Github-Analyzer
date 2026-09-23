@@ -13,7 +13,7 @@ import type {
   Repository,
   Rule,
   SecurityFinding,
-} from '../lib/types'
+} from '@/lib/types'
 
 /* ------------------------------------------------------------------ */
 /* Repository                                                          */

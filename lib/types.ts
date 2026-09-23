@@ -182,3 +182,8 @@ export interface FindingDetailPayload {
   reason: string[]
   fix: { label: string; code: CodeSnippet }
 }
+
+export interface FileTreeNode {
+  type: 'file' | 'dir'
+  name: string
+}

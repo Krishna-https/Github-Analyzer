@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Book, Target } from 'lucide-react'
-import { api } from '../app/api/client'
+import { api } from '@/lib/api'
 import { SeverityBadge } from '@/components/ui/Badge'
 
 export default function Rules() {

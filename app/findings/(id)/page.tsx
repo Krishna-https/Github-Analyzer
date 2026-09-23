@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, FileCode, CheckCircle2, Book } from 'lucide-react'
-import { api } from '../app/api/client'
+import { api } from '@/lib/api'
 import { Card, SectionTitle } from '@/components/ui/Card'
 import { SeverityBadge } from '@/components/ui/Badge'
 import { CodeView } from '@/components/ui/CodeView'

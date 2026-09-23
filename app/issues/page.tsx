@@ -1,7 +1,8 @@
+"use client"
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
-import { api } from '../app/api/client'
+import { api } from '@/lib/api'
 import { Card, SectionTitle } from '@/components/ui/Card'
 import { SeverityBadge, StatusBadge } from '@/components/ui/Badge'
 
@@ -92,7 +93,7 @@ export default function Issues() {
                   </td>
                   <td className="py-2.5 text-right">
                     <Link
-                      to={`/findings/${issue.refId}`}
+                      href={`/findings/${issue.refId}`}
                       className="inline-flex items-center gap-1.5 rounded-full border border-edge px-3 py-1 text-[11px] font-semibold text-white/50 transition-colors hover:border-primary/30 hover:text-primary"
                     >
                       View <ArrowRight className="h-3 w-3" />

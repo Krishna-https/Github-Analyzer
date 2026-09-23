@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { ArrowUpRight, FileCode, Activity } from 'lucide-react'
-import { api } from '../api/client'
+import { api } from '../@/lib/api'
 import { ModuleIcon } from '../@/components/ui/Icon'
 
 export default function Modules() {

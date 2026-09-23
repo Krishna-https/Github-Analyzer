@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { CodeSnippet } from '../../lib/types'
+import type { CodeSnippet } from '../@/lib/types'
 
 export function CodeView({
   snippet,

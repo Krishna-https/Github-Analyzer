@@ -1,13 +1,14 @@
+"use client"
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { CheckCircle2, Loader2, ArrowRight } from 'lucide-react'
-import { api } from '../app/api/client'
+import { api } from '@/lib/api'
 import { useAnalysis } from '@/context/AnalysisContext'
-import type { AnalysisStep } from '../lib/types'
+import type { AnalysisStep } from '@/lib/types'
+import { useRouter } from 'next/navigation'
 
 export default function Analyze() {
   const { repoUrl, completeAnalysis } = useAnalysis()
-  const navigate = useNavigate()
+  const router = useRouter()
   const [steps, setSteps] = useState<AnalysisStep[]>([])
   const [current, setCurrent] = useState(0)
   const started = useRef(false)
@@ -22,10 +23,10 @@ export default function Analyze() {
       })
       setTimeout(() => {
         completeAnalysis()
-        navigate('/overview', { replace: true })
+        router.push('/overview')
       }, res.steps.length * 520 + 600)
     })
-  }, [repoUrl, navigate, completeAnalysis])
+  }, [repoUrl, router, completeAnalysis])
 
   const done = steps.slice(0, current)
   const activeStep = steps[current]

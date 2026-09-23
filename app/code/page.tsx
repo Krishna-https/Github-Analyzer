@@ -1,8 +1,9 @@
+"use client"
 import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { Search, Activity, ArrowUpRight } from 'lucide-react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
-import { api } from '../app/api/client'
+import { api } from '@/lib/api'
 import { Card, SectionTitle } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { StatusBadge } from '@/components/ui/Badge'
@@ -90,7 +91,7 @@ export default function CodeAnalysis() {
             {complexityFindings.map((cf) => (
               <Link
                 key={cf.id}
-                to={`/findings/${cf.id}`}
+                href={`/findings/${cf.id}`}
                 className="group block rounded-xl border border-edge bg-shell p-3.5 transition-all hover:border-primary/30"
               >
                 <div className="flex items-start justify-between">

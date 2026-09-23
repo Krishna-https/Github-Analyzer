@@ -1,3 +1,4 @@
+"use client"
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis } from 'recharts'
 import {
   Target,
@@ -5,11 +6,11 @@ import {
   ArrowRight,
   Check,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
 import { Card, SectionTitle } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
-import { api } from '../app/api/client'
-import type { EvidenceItem } from '../lib/types'
+import { api } from '@/lib/api'
+import type { EvidenceItem } from '@/lib/types'
+import Link from 'next/link'
 
 const evidenceIcons: Record<string, typeof Check> = {
   atom: Check,
@@ -96,13 +97,13 @@ export default function Overview() {
             </div>
           </div>
           <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-edge pt-5">
-            <Link to="/architecture" className="flex items-center gap-1.5 text-xs font-semibold text-white/70 transition-colors hover:text-primary">
+            <Link href="/architecture" className="flex items-center gap-1.5 text-xs font-semibold text-white/70 transition-colors hover:text-primary">
               View architecture <ArrowRight className="h-3.5 w-3.5" />
             </Link>
-            <Link to="/code" className="flex items-center gap-1.5 text-xs font-semibold text-white/70 transition-colors hover:text-primary">
+            <Link href="/code" className="flex items-center gap-1.5 text-xs font-semibold text-white/70 transition-colors hover:text-primary">
               View code analysis <ArrowRight className="h-3.5 w-3.5" />
             </Link>
-            <Link to="/issues" className="flex items-center gap-1.5 text-xs font-semibold text-white/70 transition-colors hover:text-primary">
+            <Link href="/issues" className="flex items-center gap-1.5 text-xs font-semibold text-white/70 transition-colors hover:text-primary">
               View potential issues <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
@@ -219,7 +220,7 @@ export default function Overview() {
               <div className="text-sm font-medium text-white/85">{repo.dependencies} total packages</div>
               <div className="text-xs text-white/40">16 highlighted in the Dependencies view</div>
             </div>
-            <Link to="/dependencies" className="flex items-center gap-1.5 text-xs font-semibold text-primary transition-colors hover:text-primary/80">
+            <Link href="/dependencies" className="flex items-center gap-1.5 text-xs font-semibold text-primary transition-colors hover:text-primary/80">
               Open <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
