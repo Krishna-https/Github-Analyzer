@@ -1,10 +1,10 @@
-import { Link } from 'react-router-dom'
+import Link from 'next/link'
 import { GitBranch } from 'lucide-react'
 
 export function TopBar() {
   return (
     <header className="flex h-14 shrink-0 items-center gap-4 border-b border-edge bg-shell px-5">
-      <Link to="/" className="flex items-center gap-2.5 text-sm font-bold tracking-tight text-white">
+      <Link href="/" className="flex items-center gap-2.5 text-sm font-bold tracking-tight text-white">
         <span className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/15 text-primary">
           <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4">
             <path d="M3 20l6-8 4 5 5-9 3 5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -26,7 +26,7 @@ export function TopBar() {
           Analysis Complete
         </div>
         <Link
-          to="/"
+          href="/"
           className="rounded-lg border border-edge px-3 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-edge hover:text-white"
         >
           New Analysis

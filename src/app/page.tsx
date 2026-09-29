@@ -1,5 +1,8 @@
+'use client'
+
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   ScanLine,
   BrainCircuit,
@@ -11,8 +14,8 @@ import {
   Boxes,
   Package,
 } from 'lucide-react'
-import { useAnalysis } from '../context/AnalysisContext'
-import { mockRepository } from '../data/mockData'
+import { useAnalysis } from '@/context/AnalysisContext'
+import { mockRepository } from '@/data/mockData'
 
 const features = [
   {
@@ -45,13 +48,13 @@ const flow = [
 export default function Home() {
   const { setRepoUrl, startAnalysis } = useAnalysis()
   const [url, setUrl] = useState('')
-  const navigate = useNavigate()
+  const router = useRouter()
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     setRepoUrl(url.trim() || 'https://github.com/acme/taskflow')
     startAnalysis()
-    navigate('/analyze')
+    router.push('/analyze')
   }
 
   return (
@@ -169,7 +172,7 @@ export default function Home() {
             {features.map((f) => (
               <Link
                 key={f.title}
-                to={f.to}
+                href={f.to}
                 className="group rounded-2xl border border-edge bg-card p-6 transition-all hover:border-primary/30 hover:shadow-lime-glow"
               >
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">

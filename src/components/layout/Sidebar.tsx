@@ -1,4 +1,7 @@
-import { NavLink, useLocation } from 'react-router-dom'
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import {
   Home,
   Search,
@@ -30,7 +33,7 @@ const items = [
 ]
 
 export function Sidebar({ className = '' }: { className?: string }) {
-  const loc = useLocation()
+  const pathname = usePathname()
 
   return (
     <aside className={`flex flex-col gap-0.5 border-r border-edge bg-shell ${className}`}>
@@ -45,11 +48,11 @@ export function Sidebar({ className = '' }: { className?: string }) {
         const Icon = (item as { icon: typeof Home }).icon
         const to = (item as { to: string }).to
         const label = (item as { label: string }).label
-        const active = loc.pathname === to || (to !== '/' && loc.pathname.startsWith(to))
+        const active = pathname === to || (to !== '/' && pathname.startsWith(to))
         return (
-          <NavLink
+          <Link
             key={to}
-            to={to}
+            href={to}
             className={[
               'mx-2 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
               active
@@ -59,7 +62,7 @@ export function Sidebar({ className = '' }: { className?: string }) {
           >
             <Icon className="h-4 w-4 shrink-0" />
             <span>{label}</span>
-          </NavLink>
+          </Link>
         )
       })}
     </aside>

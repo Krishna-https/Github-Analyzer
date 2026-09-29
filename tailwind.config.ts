@@ -1,7 +1,7 @@
 import type { Config } from 'tailwindcss'
 
 export default {
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
@@ -16,7 +16,7 @@ export default {
       },
       fontFamily: {
         sans: [
-          'Inter',
+          'var(--font-inter)',
           'ui-sans-serif',
           'system-ui',
           '-apple-system',
@@ -27,7 +27,7 @@ export default {
           'sans-serif',
         ],
         mono: [
-          'JetBrains Mono',
+          'var(--font-jetbrains-mono)',
           'ui-monospace',
           'SFMono-Regular',
           'Menlo',
