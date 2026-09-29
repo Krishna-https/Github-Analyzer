@@ -31,3 +31,8 @@ export const statusBadgeColor: Record<string, string> = {
   High: 'bg-red-950/80 text-red-300 border border-red-800/60',
   Critical: 'bg-red-950 text-red-200 border border-red-700',
 }
+
+export const chartTooltip = {
+  contentStyle: { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10, fontSize: 12 },
+  itemStyle: { color: '#fff' },
+}
