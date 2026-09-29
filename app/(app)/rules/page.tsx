@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { Target } from 'lucide-react'
-import { api } from '@/api/client'
+import { api } from '@/lib/api/client'
 import { RuleGrid } from './rule-grid'
 
 export default function Rules() {

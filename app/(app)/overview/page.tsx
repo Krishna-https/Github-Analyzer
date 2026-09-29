@@ -4,7 +4,7 @@ import { Card, SectionTitle } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { LanguageDonut } from '@/components/charts/LanguageDonut'
 import { ComplexityBars } from '@/components/charts/ComplexityBars'
-import { api } from '@/api/client'
+import { api } from '@/lib/api/client'
 import type { EvidenceItem } from '@/lib/types'
 
 const evidenceIcons: Record<string, typeof Check> = {

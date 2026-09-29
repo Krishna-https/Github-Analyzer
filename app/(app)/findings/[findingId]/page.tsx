@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { ArrowLeft, FileCode, CheckCircle2, Book } from 'lucide-react'
-import { api } from '@/api/client'
+import { api } from '@/lib/api/client'
 import { Card, SectionTitle } from '@/components/ui/Card'
 import { SeverityBadge } from '@/components/ui/Badge'
 import { CodeView } from '@/components/ui/CodeView'

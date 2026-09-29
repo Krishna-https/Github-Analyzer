@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
-import { api } from '@/api/client'
+import { api } from '@/lib/api/client'
 import { Card, SectionTitle } from '@/components/ui/Card'
 import { SeverityBadge, StatusBadge } from '@/components/ui/Badge'
 

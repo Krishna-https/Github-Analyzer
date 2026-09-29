@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, Loader2, ArrowRight } from 'lucide-react'
-import { api } from '@/api/client'
+import { api } from '@/lib/api/client'
 import { useAnalysis } from '@/context/AnalysisContext'
 import type { AnalysisStep } from '@/lib/types'
 

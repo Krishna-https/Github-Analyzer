@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { ArrowLeft, ArrowUpRight } from 'lucide-react'
-import { api } from '@/api/client'
+import { api } from '@/lib/api/client'
 import { Card, SectionTitle } from '@/components/ui/Card'
 import { ModuleIcon } from '@/components/ui/Icon'
 import { StatusBadge } from '@/components/ui/Badge'

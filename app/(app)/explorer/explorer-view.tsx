@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { ChevronRight, Folder, FileCode, Layers } from 'lucide-react'
-import { api } from '@/api/client'
+import { api } from '@/lib/api/client'
 import { buildTree, type FileTreeNode } from '@/data/mockSourceFiles'
 import { Card } from '@/components/ui/Card'
 
