@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -50,12 +50,53 @@ export default function Home() {
   const [url, setUrl] = useState('')
   const router = useRouter()
 
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault()
-    setRepoUrl(url.trim() || 'https://github.com/acme/taskflow')
-    startAnalysis()
-    router.push('/analyze')
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault()
+
+  const repoUrl = url.trim()
+
+  if (!repoUrl) {
+    alert('Please enter a GitHub repository URL')
+    return
   }
+
+  try {
+    console.log('Sending repository URL:', repoUrl)
+
+    const response = await fetch('/api/clone', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        repoUrl,
+      }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Repository clone failed')
+    }
+
+    console.log('Container created:', data.containerId)
+    console.log('Repository cloned successfully')
+    // Existing analysis flow
+    setRepoUrl(repoUrl)
+    startAnalysis()
+
+    router.push('/analyze')
+
+  } catch (error) {
+    console.error('Error:', error)
+
+    alert(
+      error instanceof Error
+        ? error.message
+        : 'Something went wrong'
+    )
+  }
+}
 
   return (
     <div className="min-h-screen bg-ink">

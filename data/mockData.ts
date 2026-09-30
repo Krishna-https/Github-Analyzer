@@ -63,7 +63,6 @@ export const analysisSteps: AnalysisStep[] = [
   { id: 'dependencies', label: 'Dependencies analyzed', detail: '76 dependencies resolved, 1 known mock vulnerability' },
   { id: 'issues', label: 'Potential issues generated', detail: '24 findings grouped by category and severity' },
 ]
-
 /* ------------------------------------------------------------------ */
 /* Evidence                                                            */
 /* ------------------------------------------------------------------ */

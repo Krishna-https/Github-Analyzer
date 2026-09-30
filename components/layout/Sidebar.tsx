@@ -21,7 +21,6 @@ const items = [
   { label: 'Analyze', icon: Search, to: '/analyze' },
   { divider: true, label: 'Analysis' },
   { label: 'Overview', icon: Layers, to: '/overview' },
-  { label: 'Architecture', icon: BarChart3, to: '/architecture' },
   { label: 'Modules', icon: LayoutList, to: '/modules' },
   { label: 'Code Analysis', icon: Code, to: '/code' },
   { label: 'Security', icon: Shield, to: '/security' },

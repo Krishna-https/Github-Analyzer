@@ -13,10 +13,10 @@ export function TopBar() {
         </span>
         <span>Repo X-Ray</span>
       </Link>
-      <div className="ml-4 hidden items-center gap-2 rounded-full border border-edge bg-card px-3 py-1 text-xs font-medium text-white/60 sm:flex">
-        <span className="h-2 w-2 rounded-full bg-emerald-500" />
-        <span>acme / taskflow</span>
-      </div>
+      {/* <div className="ml-4 hidden items-center gap-2 rounded-full border border-edge bg-card px-3 py-1 text-xs font-medium text-white/60 sm:flex"> */}
+        {/* <span className="h-2 w-2 rounded-full bg-emerald-500" /> */}
+        {/* <span>acme / taskflow</span> */}
+      {/* </div> */}
       <div className="ml-auto flex items-center gap-2">
         <div className="hidden items-center gap-1.5 rounded-full border border-emerald-800/60 bg-emerald-950/60 px-3 py-1 text-[11px] font-semibold text-emerald-400 sm:flex">
           <GitBranch className="h-3 w-3" />
