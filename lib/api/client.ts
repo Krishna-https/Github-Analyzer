@@ -9,6 +9,7 @@ import type {
   Issue,
   LanguageShare,
   ModuleRecord,
+  RealFileContent,
   Repository,
   Rule,
   SecurityFinding,
@@ -152,6 +153,43 @@ export const api = {
 
     const data = (await res.json()) as { tree?: FileTreeNode[] }
     return data.tree ?? []
+  },
+
+  /**
+   * Real file content from a cloned runner container, fetched through /api/file.
+   * The path is container-absolute (/workspace/repo/src/app.tsx) and passed to
+   * `cat` inside the container as a plain argv element.
+   *
+   * Throws FileTreeError so callers can distinguish a stale container (404),
+   * a bad path (400), a binary file (415), or an unreachable server.
+   */
+  async getFileContent(containerId: string, path: string): Promise<RealFileContent> {
+    let res: Response
+
+    try {
+      res = await fetch(
+        `/api/file?containerId=${encodeURIComponent(containerId)}&path=${encodeURIComponent(path)}`
+      )
+    } catch {
+      // fetch only rejects on network failure, not on a non-2xx status.
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    if (!res.ok) {
+      let message = `File request failed with status ${res.status}`
+
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) message = body.error
+      } catch {
+        // Non-JSON error body; keep the status-based message.
+      }
+
+      throw new FileTreeError(message, res.status)
+    }
+
+    const data = (await res.json()) as { file?: RealFileContent }
+    return data.file ?? { path, language: 'Text', lines: 0, bytes: 0, truncated: false, content: [] }
   },
 
   getEvidence(): EvidenceItem[] {

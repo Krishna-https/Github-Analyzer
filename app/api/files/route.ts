@@ -1,16 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readContainerFileTree } from '@/lib/docker/fileTree'
-
-/**
- * Docker's own status code, when it sends one. docker-modem copies it onto
- * the thrown Error as `statusCode`, so a missing container is distinguishable
- * from the daemon being unreachable.
- */
-function dockerStatus(error: unknown): number | undefined {
-  if (typeof error !== 'object' || error === null) return undefined
-  const status = (error as { statusCode?: unknown }).statusCode
-  return typeof status === 'number' ? status : undefined
-}
+import { dockerStatus } from '@/lib/docker/errors'
 
 export async function GET(request: NextRequest) {
   const containerId = request.nextUrl.searchParams.get('containerId')

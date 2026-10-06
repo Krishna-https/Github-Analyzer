@@ -170,6 +170,16 @@ export interface SourceFile {
   content: string[]
 }
 
+/** A file read back out of a runner container by /api/file. */
+export interface RealFileContent {
+  path: string
+  language: string
+  lines: number
+  bytes: number
+  truncated: boolean
+  content: string[]
+}
+
 export interface FindingDetailPayload {
   id: string
   title: string
