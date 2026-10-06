@@ -1,14 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { ChevronRight, Folder, FileCode, Layers } from 'lucide-react'
 import { api } from '@/lib/api/client'
-import { buildTree, type FileTreeNode } from '@/data/mockSourceFiles'
+import type { FileTreeNode } from '@/data/mockSourceFiles'
 import { Card } from '@/components/ui/Card'
-
-const tree = buildTree()
 
 function TreeItem({ node, depth = 0 }: { node: FileTreeNode; depth?: number }) {
   const [open, setOpen] = useState(depth < 2)
@@ -59,8 +57,28 @@ function TreeItem({ node, depth = 0 }: { node: FileTreeNode; depth?: number }) {
 
 export function ExplorerView() {
   const params = useSearchParams()
+  const containerId = params.get('containerId')
   const selectedPath = params.get('file') ?? 'src/services/task.ts'
   const file = api.getFile(selectedPath)
+
+  // With no container, or an unreachable one, fall back to the bundled sample
+  // tree so the explorer still demonstrates something.
+  const [realTree, setRealTree] = useState<FileTreeNode[] | null>(null)
+  const tree = realTree && realTree.length > 0 ? realTree : api.getFileTree()
+
+  useEffect(() => {
+    if (!containerId) return
+
+    let cancelled = false
+
+    api.getRealFileTree(containerId).then((next) => {
+      if (!cancelled) setRealTree(next)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [containerId])
 
   return (
     <div className="grid gap-6 lg:grid-cols-5">

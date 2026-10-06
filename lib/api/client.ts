@@ -108,6 +108,27 @@ export const api = {
     return buildTree()
   },
 
+  /**
+   * Real file tree from a cloned runner container. The Docker socket is only
+   * reachable server-side, so this goes through /api/files rather than talking
+   * to dockerode directly.
+   */
+  async getRealFileTree(containerId: string): Promise<FileTreeNode[]> {
+    try {
+      const res = await fetch(`/api/files?containerId=${encodeURIComponent(containerId)}`)
+
+      if (!res.ok) {
+        throw new Error(`File tree request failed with status ${res.status}`)
+      }
+
+      const data = (await res.json()) as { tree?: FileTreeNode[] }
+      return data.tree ?? []
+    } catch (error) {
+      console.error('Error fetching real file tree:', error)
+      return []
+    }
+  },
+
   getEvidence(): EvidenceItem[] {
     return mockEvidence
   },
