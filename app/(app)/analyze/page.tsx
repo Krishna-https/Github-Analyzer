@@ -8,7 +8,7 @@ import { useAnalysis } from '@/context/AnalysisContext'
 import type { AnalysisStep } from '@/lib/types'
 
 export default function Analyze() {
-  const { repoUrl, completeAnalysis } = useAnalysis()
+  const { repoUrl, containerId, completeAnalysis } = useAnalysis()
   const router = useRouter()
   const [steps, setSteps] = useState<AnalysisStep[]>([])
   const [current, setCurrent] = useState(0)
@@ -24,10 +24,10 @@ export default function Analyze() {
       })
       setTimeout(() => {
         completeAnalysis()
-        router.replace('/overview')
+        router.replace(containerId ? `/overview?containerId=${encodeURIComponent(containerId)}` : '/overview')
       }, res.steps.length * 520 + 600)
     })
-  }, [repoUrl, router, completeAnalysis])
+  }, [repoUrl, router, completeAnalysis, containerId])
 
   const done = steps.slice(0, current)
   const activeStep = steps[current]

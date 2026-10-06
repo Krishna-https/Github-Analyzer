@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useAnalysis } from '@/context/AnalysisContext'
 import {
   Home,
   Search,
@@ -13,7 +14,6 @@ import {
   AlertTriangle,
   Book,
   Folder,
-  BarChart3,
 } from 'lucide-react'
 
 const items = [
@@ -33,6 +33,12 @@ const items = [
 
 export function Sidebar({ className = '' }: { className?: string }) {
   const pathname = usePathname()
+  const { containerId } = useAnalysis()
+
+  // Thread the live container through every link, or fall back to a plain path
+  // when no analysis has been run yet, so the code explorer can resolve the
+  // real file tree without the user copying a 64-hex ID into the URL.
+  const hrefFor = (to: string) => (containerId ? `${to}?containerId=${encodeURIComponent(containerId)}` : to)
 
   return (
     <aside className={`flex flex-col gap-0.5 border-r border-edge bg-shell ${className}`}>
@@ -51,7 +57,7 @@ export function Sidebar({ className = '' }: { className?: string }) {
         return (
           <Link
             key={to}
-            href={to}
+            href={hrefFor(to)}
             className={[
               'mx-2 flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
               active

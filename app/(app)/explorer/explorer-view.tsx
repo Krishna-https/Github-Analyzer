@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { ChevronRight, Folder, FileCode, Layers } from 'lucide-react'
 import { api } from '@/lib/api/client'
+import { useAnalysis } from '@/context/AnalysisContext'
 import type { FileTreeNode } from '@/data/mockSourceFiles'
 import { Card } from '@/components/ui/Card'
 
@@ -57,28 +58,62 @@ function TreeItem({ node, depth = 0 }: { node: FileTreeNode; depth?: number }) {
 
 export function ExplorerView() {
   const params = useSearchParams()
-  const containerId = params.get('containerId')
+  const { containerId: sessionContainerId } = useAnalysis()
+  // Prefer the explicit URL parameter (survives reloads), fall back to the
+  // container created by the current analysis session.
+  const containerId = params.get('containerId') ?? sessionContainerId
   const selectedPath = params.get('file') ?? 'src/services/task.ts'
   const file = api.getFile(selectedPath)
 
-  // With no container, or an unreachable one, fall back to the bundled sample
-  // tree so the explorer still demonstrates something.
-  const [realTree, setRealTree] = useState<FileTreeNode[] | null>(null)
-  const tree = realTree && realTree.length > 0 ? realTree : api.getFileTree()
+  // The result is tagged with the containerId it belongs to, so a containerId
+  // change marks the previous result stale instead of flashing old data. All
+  // setState happens in the promise callbacks, never in the effect body.
+  const [result, setResult] = useState<{
+    containerId: string
+    tree: FileTreeNode[] | null
+    error: string | null
+  } | null>(null)
 
   useEffect(() => {
     if (!containerId) return
 
     let cancelled = false
 
-    api.getRealFileTree(containerId).then((next) => {
-      if (!cancelled) setRealTree(next)
-    })
+    api
+      .getRealFileTree(containerId)
+      .then((next) => {
+        if (cancelled) return
+        setResult({
+          containerId,
+          tree: next.length > 0 ? next : null,
+          error: next.length > 0 ? null : 'The container returned no files.',
+        })
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return
+        setResult({
+          containerId,
+          tree: null,
+          error: cause instanceof Error ? cause.message : 'Could not load the file tree.',
+        })
+      })
 
     return () => {
       cancelled = true
     }
   }, [containerId])
+
+  const matched = result && result.containerId === containerId ? result : null
+  const loading = Boolean(containerId) && !matched
+  const error = matched?.error ?? null
+
+  // With no container, show the bundled sample tree so the explorer still
+  // demonstrates something. With a container that failed to load, we still fall
+  // back, but `error` says why — silently swapping in mock data would read as
+  // if it were a real repo listing.
+  const realTree = matched?.tree ?? null
+  const tree = realTree ?? api.getFileTree()
+  const usingFallback = Boolean(containerId) && !loading && !realTree
 
   return (
     <div className="grid gap-6 lg:grid-cols-5">
@@ -88,11 +123,37 @@ export function ExplorerView() {
           <Layers className="h-3.5 w-3.5" />
           File Tree
         </div>
-        <div className="mt-3 space-y-0.5">
-          {tree.map((n) => (
-            <TreeItem key={n.name} node={n} depth={0} />
-          ))}
-        </div>
+
+        {usingFallback && (
+          <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+            <div className="text-xs font-semibold text-amber-300">
+              Could not load files from the container
+            </div>
+            <div className="mt-1 break-words font-mono text-[11px] leading-relaxed text-amber-200/70">
+              {error}
+            </div>
+            <div className="mt-1.5 text-[11px] text-white/45">
+              Showing sample data instead. The container may have been stopped or removed.
+            </div>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="mt-3 animate-pulse space-y-2 rounded-lg border border-edge bg-shell/50 px-3 py-3">
+            <div className="text-xs text-white/50">Reading container files…</div>
+            <div className="space-y-1.5">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-3 rounded bg-white/5" style={{ width: `${80 - i * 12}%` }} />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-0.5">
+            {tree.map((n) => (
+              <TreeItem key={n.name} node={n} depth={0} />
+            ))}
+          </div>
+        )}
       </Card>
 
       {/* File view */}

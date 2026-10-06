@@ -46,7 +46,7 @@ const flow = [
 ]
 
 export default function Home() {
-  const { setRepoUrl, startAnalysis } = useAnalysis()
+  const { setRepoUrl, setContainerId, startAnalysis } = useAnalysis()
   const [url, setUrl] = useState('')
   const router = useRouter()
 
@@ -79,9 +79,9 @@ export default function Home() {
       throw new Error(data.error || 'Repository clone failed')
     }
 
-    console.log('Container created:', data.containerId)
-    console.log('Repository cloned successfully')
-    // Existing analysis flow
+    // Keep the containerId so the rest of the app (sidebar, explorer) can open
+    // the real file tree instead of making the user hand-copy a 64-hex ID.
+    setContainerId(data.containerId as string)
     setRepoUrl(repoUrl)
     startAnalysis()
 
@@ -124,7 +124,7 @@ export default function Home() {
           </div>
 
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-6xl">
-            See What's Really Inside
+            See What&apos;s Really Inside
             <br />
             <span className="text-gradient-primary">a Repository.</span>
           </h1>

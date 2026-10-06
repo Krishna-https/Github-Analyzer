@@ -29,6 +29,17 @@ import {
 } from '../../data/mockData'
 import { mockSourceFiles, buildTree, type FileTreeNode } from '../../data/mockSourceFiles'
 
+/**
+ * Raised when the real file tree can't be loaded. Carries the HTTP status so
+ * callers can distinguish a stale container (404) from an unreachable server.
+ */
+export class FileTreeError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message)
+    this.name = 'FileTreeError'
+  }
+}
+
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /*
@@ -112,21 +123,35 @@ export const api = {
    * Real file tree from a cloned runner container. The Docker socket is only
    * reachable server-side, so this goes through /api/files rather than talking
    * to dockerode directly.
+   *
+   * Throws FileTreeError so callers can tell the user why they're seeing the
+   * mock fallback instead of real files.
    */
   async getRealFileTree(containerId: string): Promise<FileTreeNode[]> {
-    try {
-      const res = await fetch(`/api/files?containerId=${encodeURIComponent(containerId)}`)
+    let res: Response
 
-      if (!res.ok) {
-        throw new Error(`File tree request failed with status ${res.status}`)
+    try {
+      res = await fetch(`/api/files?containerId=${encodeURIComponent(containerId)}`)
+    } catch {
+      // fetch only rejects on network failure, not on a non-2xx status.
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    if (!res.ok) {
+      let message = `File tree request failed with status ${res.status}`
+
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) message = body.error
+      } catch {
+        // Non-JSON error body; keep the status-based message.
       }
 
-      const data = (await res.json()) as { tree?: FileTreeNode[] }
-      return data.tree ?? []
-    } catch (error) {
-      console.error('Error fetching real file tree:', error)
-      return []
+      throw new FileTreeError(message, res.status)
     }
+
+    const data = (await res.json()) as { tree?: FileTreeNode[] }
+    return data.tree ?? []
   },
 
   getEvidence(): EvidenceItem[] {

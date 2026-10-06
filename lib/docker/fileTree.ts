@@ -9,7 +9,7 @@ const REPO_DIR = '/workspace/repo'
 
 /**
  * Lists every file under the cloned repo in a runner container and folds the
- * flat `find` output back into a nested tree.
+ * `ls` output back into a nested tree.
  *
  * Server-only: dockerode reaches for the Docker socket over Node's http/net
  * stack, so this must never be pulled into a client bundle.
@@ -20,8 +20,11 @@ export async function readContainerFileTree(containerId: string): Promise<FileTr
   // Tty stays off so stdout arrives multiplexed with 8-byte frame headers, which
   // `demux` strips. Leaving Tty on merges stderr into stdout and wraps long
   // lines with \r, both of which corrupt the file list.
+  //
+  // -1 keeps entries on one line, -A includes dotfiles, -R recurses. Without
+  // -1 BusyBox columnises and silently shreds the list.
   const exec = await container.exec({
-    Cmd: ['sh', '-c', `find ${REPO_DIR} -type f`],
+    Cmd: ['sh', '-c', `ls -1AR ${REPO_DIR}`],
     AttachStderr: false,
     AttachStdout: true,
     Tty: false,
@@ -56,39 +59,97 @@ export async function readContainerFileTree(containerId: string): Promise<FileTr
 
   const stderrText = Buffer.concat(errors).toString('utf8').trim()
   if (stderrText) {
-    console.error('find stderr:', stderrText)
+    console.error('ls stderr:', stderrText)
   }
 
-  return buildTreeFromPaths(raw)
+  return buildTreeFromPaths(parseLsOutput(raw))
 }
 
-/** Turns newline-separated absolute paths into a nested tree. */
-export function buildTreeFromPaths(output: string): FileTreeNode[] {
+export interface PathEntry {
+  path: string
+  type: 'file' | 'dir'
+}
+
+/**
+ * Parses `ls -1AR` into flat entries. BusyBox prints one block per directory:
+ * a `<path>:` header line, then its entries, then a blank line. Directories
+ * appear both as an entry in their parent's block and as a later header, so
+ * headers are collected in a first pass — otherwise every directory in the
+ * first pass is misread as a file.
+ *
+ * Entries are returned without the `REPO_DIR` prefix.
+ */
+export function parseLsOutput(output: string): PathEntry[] {
+  const lines = output.split('\n').map((l) => l.replace(/\r$/, ''))
+  const headers = new Set(
+    lines
+      .filter((l) => l.endsWith(':'))
+      .map((l) => l.slice(0, -1).trim())
+  )
+
+  const entries: PathEntry[] = []
+  const seen = new Set<string>()
+  let currentDir: string | null = null
+
+  for (const line of lines) {
+    if (line === '') {
+      currentDir = null
+      continue
+    }
+
+    if (line.endsWith(':')) {
+      currentDir = line.slice(0, -1).trim()
+      continue
+    }
+
+    if (!currentDir || (currentDir !== REPO_DIR && !currentDir.startsWith(REPO_DIR + '/'))) {
+      continue
+    }
+
+    const relativeDir = currentDir.slice(REPO_DIR.length + 1) // '' at the root
+    const relative = relativeDir ? `${relativeDir}/${line}` : line
+    if (seen.has(relative)) continue
+
+    seen.add(relative)
+    entries.push({
+      path: relative,
+      // A header line proves the entry is a directory, including empty ones.
+      type: headers.has(`${currentDir}/${line}`) ? 'dir' : 'file',
+    })
+  }
+
+  return entries
+}
+
+/**
+ * Folds flat, pre-relative paths back into a nested tree. Directories are
+ * emitted even when empty, and sorted with directories first.
+ */
+export function buildTreeFromPaths(entries: PathEntry[]): FileTreeNode[] {
   const root: FileTreeNode[] = []
 
-  for (const line of output.split('\n')) {
-    const abs = line.trim()
-    if (!abs.startsWith(REPO_DIR + '/')) continue
-
-    const relative = abs.slice(REPO_DIR.length + 1)
-    const parts = relative.split('/').filter(Boolean)
+  for (const entry of entries) {
+    const parts = entry.path.split('/').filter(Boolean)
     if (parts.length === 0) continue
 
     let cursor = root
 
     parts.forEach((part, i) => {
-      const isFile = i === parts.length - 1
+      const isLast = i === parts.length - 1
+      const isFile = isLast && entry.type === 'file'
+
       let node = cursor.find((n) => n.name === part)
 
-      if (node && isFile && node.type !== 'file') {
-        // `find` can list a path that already exists as a directory node.
-        node.type = 'file'
-        node.children = undefined
+      if (node && isLast && ((isFile && node.type !== 'file') || (!isFile && node.type !== 'dir'))) {
+        // The same name turned up as both a file and a directory across
+        // blocks; the block header is authoritative, so let it win.
+        node.type = entry.type
+        node.children = entry.type === 'dir' ? [] : undefined
       }
 
       if (!node) {
         node = isFile
-          ? { name: part, type: 'file', path: parts.join('/') }
+          ? { name: part, type: 'file', path: entry.path }
           : { name: part, type: 'dir', children: [] }
         cursor.push(node)
       }
