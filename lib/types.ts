@@ -192,3 +192,25 @@ export interface FindingDetailPayload {
   reason: string[]
   fix: { label: string; code: CodeSnippet }
 }
+
+/**
+ * Real analysis results served by /api/analysis for a cloned runner container.
+ * Everything the Overview page renders comes out of one bundle that the server
+ * computes once and caches keyed by containerId (invalidated when HEAD moves).
+ */
+export interface AnalysisOverview {
+  repository: Repository
+  languages: LanguageShare[]
+  evidence: EvidenceItem[]
+  complexityBuckets: ComplexityBucket[]
+  dependencyHealth: { healthy: number; review: number; vulnerable: number }
+  /** Plain-language summary bullet points ("the repo in simple words"). */
+  summary: string[]
+  /** Short evidence strings behind the summary, e.g. "React frontend detected". */
+  detectedBy: string[]
+  /** True when the repo has no conventional folder layout; modules were classified by content. */
+  weakStructure: boolean
+  /** Stat labels that cannot come from a clone (e.g. Stars) — display as N/A. */
+  statsUnavailable: string[]
+  computedAt: string
+}

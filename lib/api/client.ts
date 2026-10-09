@@ -1,4 +1,5 @@
 import type {
+  AnalysisOverview,
   AnalysisStep,
   ArchitectureNode,
   ComplexityBucket,
@@ -67,6 +68,40 @@ export const api = {
       evidence: mockEvidence,
       complexityBuckets,
     }
+  },
+
+  /**
+   * Real analysis overview from a cloned runner container, fetched through
+   * /api/analysis. The server computes the bundle once (git metadata, language
+   * share, file classification, code parsing, dependencies, evidence) and caches
+   * it keyed by containerId until the repo's HEAD changes.
+   *
+   * Throws FileTreeError so callers can distinguish a stale container (404),
+   * an unanalyzable repo (400/502), or an unreachable server (0).
+   */
+  async getAnalysisOverview(containerId: string): Promise<AnalysisOverview> {
+    let res: Response
+
+    try {
+      res = await fetch(`/api/analysis?containerId=${encodeURIComponent(containerId)}`)
+    } catch {
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    if (!res.ok) {
+      let message = `Analysis request failed with status ${res.status}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) message = body.error
+      } catch {
+        // Non-JSON error body; keep the status-based message.
+      }
+      throw new FileTreeError(message, res.status)
+    }
+
+    const data = (await res.json()) as { overview?: AnalysisOverview }
+    if (!data.overview) throw new FileTreeError('Analysis returned no overview data.', 502)
+    return data.overview
   },
 
   getArchitecture(): ArchitectureNode[] {
