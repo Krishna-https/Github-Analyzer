@@ -109,19 +109,12 @@ export default function Home() {
         </span>
         <div>
           <div className="text-sm font-bold text-white">Repository X-Ray</div>
-          <div className="text-[11px] text-white/40">GitHub Repository Analyzer</div>
+          <div className="text-[10px] text-white/40">GitHub Repository Analyzer</div>
         </div>
-        <span className="ml-auto hidden rounded-full border border-edge px-3 py-1 text-[11px] font-medium text-white/45 sm:block">
-          Prototype
-        </span>
       </header>
 
       <main className="px-6 pb-20">
-        <div className="mx-auto max-w-5xl pt-20 text-center">
-          <div className="mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/5 px-3.5 py-1.5 text-xs font-semibold text-primary animate-fade-up">
-            <Wand2 className="h-3.5 w-3.5" />
-            Mock Analysis Demo — no code is actually cloned
-          </div>
+        <div className="mx-auto mt-16 max-w-2xl text-center">
 
           <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-6xl">
             See What&apos;s Really Inside
@@ -155,14 +148,6 @@ export default function Home() {
               </button>
             </div>
           </form>
-
-          <div className="mt-4 flex items-center justify-center gap-3 text-[11px] text-white/35">
-            <span className="rounded-full border border-edge px-2.5 py-1">Prototype</span>
-            <span className="rounded-full border border-edge px-2.5 py-1">Mock Analysis</span>
-          </div>
-          <p className="mt-3 text-[11px] text-white/30">
-            This prototype demonstrates the future analysis workflow using sample repository data.
-          </p>
         </div>
 
         {/* Preview pipeline */}
@@ -228,10 +213,6 @@ export default function Home() {
             ))}
           </div>
         </div>
-
-        <footer className="mx-auto mt-12 max-w-4xl border-t border-edge pt-5 text-center text-[11px] text-white/30">
-          Frontend-only prototype · no GitHub API, no backend, no AI · all results derived from centralized mock data
-        </footer>
       </main>
     </div>
   )
