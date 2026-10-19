@@ -3,6 +3,7 @@ import 'server-only'
 import type { AnalysisOverview, ComplexityBucket, Repository } from '@/lib/types'
 import { classifyFile } from './classify'
 import { detectEvidence, type EvidenceInput } from './evidence'
+import { extractCodeInsights } from './extract'
 import { computeLanguageShares, languageInfo } from './languages'
 import { parseDependencies } from './manifests'
 import { parseSource } from './parser'
@@ -16,6 +17,7 @@ import {
   type FileCategory,
   type ModuleInfo,
   type ParsedFile,
+  type ProjectFacts,
 } from './types'
 
 /* ------------------------------------------------------------------ */
@@ -58,6 +60,23 @@ function detectLicense(files: DumpFile[]): string {
     if (re.test(firstLines)) return name
   }
   return 'Custom license'
+}
+
+/** Common entry-point filenames, anchored at the end so it tests the basename. */
+const ENTRY_FILE_RE =
+  /(^|\/)(index|main|app|server|cli|manage|program|__main__)\.(ts|tsx|js|jsx|mjs|cjs|mts|cts|py|go|rb|java|kt|rs|php|cs)$/i
+
+/** Shallow, non-test files that look like the program's entry point. */
+function findEntryPoints(files: DumpFile[]): string[] {
+  return files
+    .filter(
+      (f) =>
+        ENTRY_FILE_RE.test(f.relPath) &&
+        f.relPath.split('/').length <= 3 &&
+        !/(^|\/)(tests?|__tests__|spec|e2e)(\/|$)/i.test(f.relPath)
+    )
+    .map((f) => f.relPath)
+    .slice(0, 8)
 }
 
 function readReadme(files: DumpFile[]): string | null {
@@ -191,6 +210,8 @@ export function analyzeDump(containerId: string, dump: AnalysisDump): AnalysisBu
       functions: isSource ? parsed.functions : 0,
       classes: isSource ? parsed.classes : 0,
       imports: parsed.imports,
+      importSources: parsed.importSources,
+      symbols: [...parsed.classNames, ...parsed.functionNames].slice(0, 20),
     })
     totalFunctions += isSource ? parsed.functions : 0
     totalClasses += isSource ? parsed.classes : 0
@@ -262,7 +283,7 @@ export function analyzeDump(containerId: string, dump: AnalysisDump): AnalysisBu
     monorepo,
     files,
   }
-  const { evidence, detectedBy } = detectEvidence(evidenceInput)
+  const { evidence, detectedBy, stack } = detectEvidence(evidenceInput)
 
   /* Assemble the real Repository before the summary so counts are truthful. */
   const repo: Repository = {
@@ -287,18 +308,29 @@ export function analyzeDump(containerId: string, dump: AnalysisDump): AnalysisBu
     license,
   }
 
-  /* Pass 8 — summary */
-  const { summary } = buildSummary({
+  /* Pass 8 — structured facts, code insights, then the deterministic summary */
+  const entryPoints = findEntryPoints(files)
+  const insights = extractCodeInsights(files, parsedFiles, entryPoints)
+
+  const facts: ProjectFacts = {
     repo,
     languages,
     evidence,
-    modulesCount,
+    stack,
+    modules,
+    topLevelDirs,
+    entryPoints,
+    keyDependencies: [...new Set(deps.map((d) => d.name))].slice(0, 15),
+    totalDependencies: deps.length,
+    dependencyHealth,
     tests,
     weakStructure,
-    dependencyHealth,
-    totalDependencies: deps.length,
     lowComplexityPct,
-  })
+    readmeExcerpt: description,
+    insights,
+  }
+
+  const { summary } = buildSummary(facts)
 
   const overview: AnalysisOverview = {
     repository: repo,
@@ -309,6 +341,8 @@ export function analyzeDump(containerId: string, dump: AnalysisDump): AnalysisBu
     summary,
     detectedBy,
     weakStructure,
+    // Stars/forks/issues never come from a clone; /api/analysis removes the ones
+    // GitHub can provide when it enriches the overview at response time.
     statsUnavailable: ['Stars', 'Forks', 'Open Issues'],
     computedAt: new Date().toISOString(),
   }
@@ -321,5 +355,6 @@ export function analyzeDump(containerId: string, dump: AnalysisDump): AnalysisBu
     files: parsedFiles,
     modules,
     topLevelDirs,
+    facts,
   }
 }

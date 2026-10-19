@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { analyzeDump } from '@/lib/analysis/analyze'
 import { readCachedBundle, writeCachedBundle } from '@/lib/analysis/cache'
+import { isLlmEnabled, generateDeepAnalysis, projectNarrative } from '@/lib/analysis/llm'
+import { enrichOverview } from '@/lib/github/repoStats'
 import { readAnalysisDump, readContainerHeadSha } from '@/lib/docker/analysisDump'
 import { ContainerError } from '@/lib/docker/errors'
+import type { AnalysisBundle } from '@/lib/analysis/types'
 
 export const runtime = 'nodejs'
 
@@ -13,7 +16,32 @@ export const runtime = 'nodejs'
  * computed bundle is cached on the host keyed by containerId and re-used while
  * the repo's HEAD is unchanged. A stale container (404) and a broken daemon
  * (502) are distinguished so the client can fall back to sample data honestly.
+ *
+ * Two enrichments layer on top of the cached bundle:
+ *  - the AI deep analysis is generated once (per HEAD) and persisted with the
+ *    bundle, with a short narrative projected onto the overview;
+ *  - GitHub stats (stars/forks/issues) are merged fresh on every response, since
+ *    they change without a new commit.
  */
+
+/**
+ * Return the bundle with the AI deep analysis attached, generating it only when
+ * it's missing and a provider is configured. The caller persists the result, so
+ * the (slow, paid) call runs once per HEAD rather than once per page load.
+ */
+async function attachDeepAnalysis(bundle: AnalysisBundle): Promise<AnalysisBundle> {
+  if (bundle.deepAnalysis || !bundle.facts || !isLlmEnabled()) return bundle
+
+  const report = await generateDeepAnalysis(bundle.facts)
+  if (!report) return bundle
+
+  return {
+    ...bundle,
+    deepAnalysis: report,
+    overview: { ...bundle.overview, narrative: projectNarrative(report) },
+  }
+}
+
 export async function GET(request: NextRequest) {
   const containerId = request.nextUrl.searchParams.get('containerId')
   if (!containerId) {
@@ -26,14 +54,16 @@ export async function GET(request: NextRequest) {
     const headSha = await readContainerHeadSha(containerId)
     const cached = readCachedBundle(containerId)
     if (cached && cached.headSha === headSha) {
-      return NextResponse.json({ containerId, overview: cached.overview, cached: true })
+      const bundle = await attachDeepAnalysis(cached)
+      if (bundle !== cached) writeCachedBundle(bundle) // persist the new report
+      return NextResponse.json({ containerId, overview: await enrichOverview(bundle.overview), cached: true })
     }
 
     const dump = await readAnalysisDump(containerId)
-    const bundle = analyzeDump(containerId, dump)
+    const bundle = await attachDeepAnalysis(analyzeDump(containerId, dump))
     writeCachedBundle(bundle)
 
-    return NextResponse.json({ containerId, overview: bundle.overview, cached: false })
+    return NextResponse.json({ containerId, overview: await enrichOverview(bundle.overview), cached: false })
   } catch (err) {
     if (err instanceof ContainerError) {
       const status = err.status >= 500 ? 502 : err.status
@@ -53,9 +83,9 @@ export async function POST(request: NextRequest) {
 
   try {
     const dump = await readAnalysisDump(containerId)
-    const bundle = analyzeDump(containerId, dump)
+    const bundle = await attachDeepAnalysis(analyzeDump(containerId, dump))
     writeCachedBundle(bundle)
-    return NextResponse.json({ containerId, overview: bundle.overview, cached: false })
+    return NextResponse.json({ containerId, overview: await enrichOverview(bundle.overview), cached: false })
   } catch (err) {
     if (err instanceof ContainerError) {
       const status = err.status >= 500 ? 502 : err.status

@@ -17,6 +17,12 @@ export interface ParseResult {
   lines: number
   /** Cyclomatic-style complexity (1 + decision points) per detected function. */
   complexities: number[]
+  /** Declared function names (capped; masked code, so identifiers only). */
+  functionNames: string[]
+  /** Declared class names. */
+  classNames: string[]
+  /** Import specifiers as written (e.g. './util', 'react', 'os.path'). */
+  importSources: string[]
 }
 
 /* ------------------------------------------------------------------ */
@@ -120,17 +126,31 @@ function lineComplexity(masked: string, start: number): number {
 /* JS / TS                                                            */
 /* ------------------------------------------------------------------ */
 
-const FN_DECL_RE = /\bfunction\s*\*?\s*(?:[A-Za-z_$][\w$]*)?\s*\(/g
+const MAX_NAMES = 60
+
+const FN_DECL_RE = /\bfunction\s*\*?\s*([A-Za-z_$][\w$]*)?\s*\(/g
 const ARROW_CONST_RE =
-  /\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(?:async\s*)?(?:\([^)]{0,300}\)|[A-Za-z_$][\w$]*)\s*=>/g
-const CLASS_RE = /\bclass\s+[A-Za-z_$][\w$]*(?:\s+extends\s+[^{]+)?\s*\{/g
+  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]{0,300}\)|[A-Za-z_$][\w$]*)\s*=>/g
+const CLASS_RE = /\bclass\s+([A-Za-z_$][\w$]*)(?:\s+extends\s+[^{]+)?\s*\{/g
 const METHOD_RE = /^\s*(?:async\s+|static\s+|get\s+|set\s+)*[A-Za-z_$][\w$]*\s*\([^)]*\)\s*(?:\{|=|$)/gm
 
-function parseJs(content: string): { functions: number; classes: number; complexities: number[] } {
+function parseJs(content: string): {
+  functions: number
+  classes: number
+  complexities: number[]
+  functionNames: string[]
+  classNames: string[]
+} {
   const masked = maskCode(content)
   let functions = 0
   let classes = 0
   const complexities: number[] = []
+  const functionNames: string[] = []
+  const classNames: string[] = []
+
+  const pushName = (list: string[], name: string | undefined) => {
+    if (name && list.length < MAX_NAMES) list.push(name)
+  }
 
   const pushBraceBody = (brace: number) => {
     if (brace === -1) return
@@ -142,11 +162,13 @@ function parseJs(content: string): { functions: number; classes: number; complex
 
   while ((m = FN_DECL_RE.exec(masked)) !== null) {
     functions++
+    pushName(functionNames, m[1])
     pushBraceBody(masked.indexOf('{', m.index))
   }
 
   while ((m = ARROW_CONST_RE.exec(masked)) !== null) {
     functions++
+    pushName(functionNames, m[1])
     const arrow = masked.indexOf('=>', m.index)
     let j = arrow === -1 ? masked.length : arrow + 2
     while (j < masked.length && (masked[j] === ' ' || masked[j] === '\t')) j++
@@ -158,6 +180,7 @@ function parseJs(content: string): { functions: number; classes: number; complex
 
   while ((m = CLASS_RE.exec(masked)) !== null) {
     classes++
+    pushName(classNames, m[1])
     const brace = masked.indexOf('{', m.index)
     if (brace === -1) continue
     const end = matchingBrace(masked, brace)
@@ -172,47 +195,61 @@ function parseJs(content: string): { functions: number; classes: number; complex
     }
   }
 
-  return { functions, classes, complexities }
+  return { functions, classes, complexities, functionNames, classNames }
 }
 
-function jsImportsCount(content: string): number {
-  const masked = maskCode(content)
+/**
+ * Import specifiers, read from the RAW source (they live inside string
+ * literals, which maskCode blanks out). The trade-off is that an import-looking
+ * token inside a comment or string is also picked up; acceptable for a summary.
+ */
+function jsImportSources(content: string): string[] {
   const re =
-    /^\s*import\s+(?:[^'"]*?\s+from\s+)?['"][^'"]+['"]|^\s*import\s+['"][^'"]+['"]|\brequire\(['"][^'"]+['"]\)|\bimport\(['"][^'"]+['"]\)/gm
-  let count = 0
-  while (true) {
-    const m = re.exec(masked)
-    if (m === null) break
-    count++
+    /^\s*import\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]|^\s*import\s+['"]([^'"]+)['"]|^\s*export\s+(?:\*|\{[^}]*\})\s+from\s+['"]([^'"]+)['"]|\brequire\(\s*['"]([^'"]+)['"]\s*\)|\bimport\(\s*['"]([^'"]+)['"]\s*\)/gm
+  const sources: string[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(content)) !== null) {
+    const src = m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5]
+    if (src) sources.push(src)
   }
-  return count
+  return sources
 }
 
 /* ------------------------------------------------------------------ */
 /* Python                                                             */
 /* ------------------------------------------------------------------ */
 
-function parsePy(content: string): { functions: number; classes: number; complexities: number[] } {
+function parsePy(content: string): {
+  functions: number
+  classes: number
+  complexities: number[]
+  functionNames: string[]
+  classNames: string[]
+} {
   const lines = content.split('\n')
   let functions = 0
   let classes = 0
   const complexities: number[] = []
+  const functionNames: string[] = []
+  const classNames: string[] = []
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
     const indent = (line.match(/^\s*/) ?? [''])[0].length
     const trimmed = line.trim()
 
-    const def = /^(?:async\s+)?def\s+[A-Za-z_]\w*\s*\(/.test(trimmed)
-    const cls = /^class\s+[A-Za-z_]\w*(?:\s*\([^)]*\))?\s*:/.test(trimmed)
+    const def = trimmed.match(/^(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(/)
+    const cls = trimmed.match(/^class\s+([A-Za-z_]\w*)(?:\s*\([^)]*\))?\s*:/)
 
     if (cls) {
       classes++
+      if (classNames.length < MAX_NAMES) classNames.push(cls[1])
       continue
     }
     if (!def) continue
 
     functions++
+    if (functionNames.length < MAX_NAMES) functionNames.push(def[1])
     let complexity = 1
     for (let j = i + 1; j < lines.length; j++) {
       const nl = lines[j]
@@ -224,18 +261,18 @@ function parsePy(content: string): { functions: number; classes: number; complex
     complexities.push(complexity)
   }
 
-  return { functions, classes, complexities }
+  return { functions, classes, complexities, functionNames, classNames }
 }
 
-function pyImportsCount(content: string): number {
-  const re = /^\s*(?:from\s+\S+\s+)?import\s+\S+/gm
-  let count = 0
-  while (true) {
-    const m = re.exec(content)
-    if (m === null) break
-    count++
+function pyImportSources(content: string): string[] {
+  const re = /^\s*from\s+([\w.]+)\s+import|^\s*import\s+([\w.]+)/gm
+  const sources: string[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(content)) !== null) {
+    const src = m[1] ?? m[2]
+    if (src) sources.push(src)
   }
-  return count
+  return sources
 }
 
 /* ------------------------------------------------------------------ */
@@ -248,14 +285,34 @@ export function parseSource(relPath: string, content: string): ParseResult {
   const lineCount = content === '' ? 0 : content.split('\n').length
 
   if (JS_EXT.test(relPath)) {
-    const { functions, classes, complexities } = parseJs(content)
-    return { functions, classes, imports: jsImportsCount(content), lines: lineCount, complexities }
+    const { functions, classes, complexities, functionNames, classNames } = parseJs(content)
+    const importSources = jsImportSources(content)
+    return {
+      functions,
+      classes,
+      imports: importSources.length,
+      lines: lineCount,
+      complexities,
+      functionNames,
+      classNames,
+      importSources,
+    }
   }
 
   if (/\.py$/i.test(relPath)) {
-    const { functions, classes, complexities } = parsePy(content)
-    return { functions, classes, imports: pyImportsCount(content), lines: lineCount, complexities }
+    const { functions, classes, complexities, functionNames, classNames } = parsePy(content)
+    const importSources = pyImportSources(content)
+    return {
+      functions,
+      classes,
+      imports: importSources.length,
+      lines: lineCount,
+      complexities,
+      functionNames,
+      classNames,
+      importSources,
+    }
   }
 
-  return { functions: 0, classes: 0, imports: 0, lines: lineCount, complexities: [] }
+  return { functions: 0, classes: 0, imports: 0, lines: lineCount, complexities: [], functionNames: [], classNames: [], importSources: [] }
 }

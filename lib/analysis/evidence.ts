@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { EvidenceItem } from '@/lib/types'
-import type { FileCategory } from './types'
+import type { FileCategory, ProjectStack } from './types'
 
 /**
  * Evidence detection for the Overview evidence card. Each item is produced by
@@ -31,6 +31,20 @@ function signal(icon: string, description: string, type: string, confidence: Evi
   return { icon, description, type, confidence }
 }
 
+/** Nicer display names for package identifiers that don't title-case cleanly. */
+const PRETTY_NAMES: Record<string, string> = {
+  '@angular/core': 'Angular',
+  'solid-js': 'Solid',
+  '@nestjs/core': 'NestJS',
+  'better-sqlite3': 'SQLite',
+  'drizzle-orm': 'Drizzle',
+  '@prisma/client': 'Prisma',
+}
+
+function prettyPkg(name: string): string {
+  return PRETTY_NAMES[name] ?? name[0].toUpperCase() + name.slice(1)
+}
+
 const FRONTEND_PKGS = new Set([
   'react', 'react-dom', 'next', 'vue', 'svelte', 'preact', 'solid-js', 'htmx', '@angular/core', 'ember-source',
 ])
@@ -48,9 +62,14 @@ const TEST_PKGS = new Set([
   'supertest', 'enzyme', 'sinon', 'nock', '@testing-library/react', 'jasmine', 'karma', 'ava',
 ])
 
-export function detectEvidence(input: EvidenceInput): { evidence: EvidenceItem[]; detectedBy: string[] } {
+export function detectEvidence(input: EvidenceInput): {
+  evidence: EvidenceItem[]
+  detectedBy: string[]
+  stack: ProjectStack
+} {
   const evidence: EvidenceItem[] = []
   const detectedBy: string[] = []
+  const stack: ProjectStack = { frontend: null, backend: null, data: null }
 
   const depNames = input.deps.map((d) => d.name)
   const depSet = new Set(depNames)
@@ -69,13 +88,16 @@ export function detectEvidence(input: EvidenceInput): { evidence: EvidenceItem[]
   const feManifest = frameworkInManifest(FRONTEND_PKGS)
   const feFile = jsxFiles > 0
   if (feManifest && feFile) {
-    evidence.push(signal('atom', 'React frontend detected', 'Framework Evidence', 'High'))
-  } else if (feManifest) {
-    // Name it by what's actually in the manifest.
+    // A manifest framework is confirmed by frontend source files.
     const name = [...depSet].find((d) => FRONTEND_PKGS.has(d))!
-    const pretty = name === '@angular/core' ? 'Angular' : name[0].toUpperCase() + name.slice(1)
-    evidence.push(signal('atom', `${pretty} frontend detected`, 'Framework Evidence', 'High'))
+    stack.frontend = prettyPkg(name)
+    evidence.push(signal('atom', `${prettyPkg(name)} frontend detected`, 'Framework Evidence', 'High'))
+  } else if (feManifest) {
+    const name = [...depSet].find((d) => FRONTEND_PKGS.has(d))!
+    stack.frontend = prettyPkg(name)
+    evidence.push(signal('atom', `${prettyPkg(name)} frontend detected`, 'Framework Evidence', 'High'))
   } else if (feFile) {
+    stack.frontend = 'Frontend'
     evidence.push(signal('atom', 'Frontend components detected', 'Framework Evidence', 'Medium'))
   }
 
@@ -85,8 +107,10 @@ export function detectEvidence(input: EvidenceInput): { evidence: EvidenceItem[]
   const beFile = backendFiles > 0
   if ((beManifest && beFile) || (beManifest && bePy)) {
     const name = [...depSet].find((d) => BACKEND_PKGS.has(d)) ?? (bePy ? 'Python' : 'backend')
-    evidence.push(signal('server', `${name} API detected`, 'Runtime Evidence', 'High'))
+    stack.backend = prettyPkg(name)
+    evidence.push(signal('server', `${prettyPkg(name)} API detected`, 'Runtime Evidence', 'High'))
   } else if (beManifest || bePy || beFile) {
+    stack.backend = bePy ? 'Python' : 'Backend'
     evidence.push(signal('server', 'Backend service detected', 'Runtime Evidence', 'Medium'))
   }
 
@@ -108,8 +132,10 @@ export function detectEvidence(input: EvidenceInput): { evidence: EvidenceItem[]
               : dbName === 'sqlite3' || dbName === 'better-sqlite3'
                 ? 'SQLite'
                 : dbName === 'prisma' || dbName === '@prisma/client' ? 'Prisma' : dbName
+    stack.data = dbName
     evidence.push(signal('database', `${dbName} integration detected`, 'Data Evidence', 'High'))
   } else if (dbManifest || dbPy || dbFile) {
+    stack.data = 'Database'
     evidence.push(signal('database', 'Data layer detected', 'Data Evidence', 'Medium'))
   }
 
@@ -156,5 +182,9 @@ export function detectEvidence(input: EvidenceInput): { evidence: EvidenceItem[]
 
   detectedBy.push(...evidence.map((e) => e.description))
 
-  return { evidence: evidence.slice(0, 8), detectedBy: detectedBy.slice(0, 6) }
+  return {
+    evidence: evidence.slice(0, 8),
+    detectedBy: detectedBy.slice(0, 6),
+    stack,
+  }
 }

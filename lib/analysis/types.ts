@@ -3,6 +3,7 @@ import 'server-only'
 import type {
   AnalysisOverview,
   ComplexityBucket,
+  DeepAnalysis,
   EvidenceItem,
   LanguageShare,
   Repository,
@@ -67,6 +68,10 @@ export interface ParsedFile {
   functions: number
   classes: number
   imports: number
+  /** Raw import specifiers, used to build the internal dependency graph. */
+  importSources?: string[]
+  /** Declared function/class names (capped), for module summaries. */
+  symbols?: string[]
 }
 
 /* ------------------------------------------------------------------ */
@@ -78,6 +83,112 @@ export interface ModuleInfo {
   files: number
   functions: number
   category: FileCategory | null
+}
+
+/* ------------------------------------------------------------------ */
+/* Structured project facts                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The named roles detected in a repository. These decouple the summary and the
+ * LLM narrative from the human-readable evidence strings in evidence.ts, so a
+ * change to a description can never silently alter the generated prose.
+ */
+export interface ProjectStack {
+  frontend: string | null
+  backend: string | null
+  data: string | null
+}
+
+/* ------------------------------------------------------------------ */
+/* Code insights (the raw material for deep analysis)                  */
+/* ------------------------------------------------------------------ */
+
+/** An import relationship between two files in the repo. */
+export interface ImportEdge {
+  from: string
+  to: string
+}
+
+/** A detected HTTP route / page. */
+export interface CodeRoute {
+  method: string
+  path: string
+  file: string
+}
+
+/** A detected data model / schema entity. */
+export interface CodeModel {
+  name: string
+  kind: string
+  file: string
+  fields: string[]
+}
+
+/** A selected, size-capped file excerpt sent to the model. */
+export interface FileExcerpt {
+  path: string
+  reason: string
+  content: string
+  truncated: boolean
+}
+
+/** Project configuration extracted from manifests and infra files. */
+export interface RepoConfig {
+  packageName: string | null
+  scripts: string[]
+  envKeys: string[]
+  composeServices: string[]
+  ciWorkflows: string[]
+}
+
+/** A per-module roll-up; the deterministic seed for a future map-reduce pass. */
+export interface ModuleSummary {
+  name: string
+  files: number
+  functions: number
+  topFiles: string[]
+  symbols: string[]
+  importsFrom: string[]
+}
+
+/**
+ * Everything the deep-analysis payload is built from. Derived deterministically
+ * from the cloned source — this is what lets the model describe things that are
+ * not visible on the GitHub page.
+ */
+export interface CodeInsights {
+  imports: ImportEdge[]
+  routes: CodeRoute[]
+  models: CodeModel[]
+  config: RepoConfig
+  moduleSummaries: ModuleSummary[]
+  excerpts: FileExcerpt[]
+}
+
+/**
+ * Every deterministic fact the analysis pipeline computes about a repository.
+ * The template summary (summary.ts) and the optional LLM narrative (llm.ts)
+ * both consume exactly this object — one source of truth, no duplicated
+ * heuristics.
+ */
+export interface ProjectFacts {
+  repo: Repository
+  languages: LanguageShare[]
+  evidence: EvidenceItem[]
+  stack: ProjectStack
+  modules: ModuleInfo[]
+  topLevelDirs: string[]
+  entryPoints: string[]
+  keyDependencies: string[]
+  totalDependencies: number
+  dependencyHealth: { healthy: number; review: number; vulnerable: number }
+  tests: number
+  weakStructure: boolean
+  lowComplexityPct: number
+  readmeExcerpt: string | null
+  /** Structured code insights (import graph, routes, models, config, excerpts). */
+  insights: CodeInsights
 }
 
 /* ------------------------------------------------------------------ */
@@ -94,6 +205,10 @@ export interface AnalysisBundle {
   files: ParsedFile[]
   modules: ModuleInfo[]
   topLevelDirs: string[]
+  /** Deterministic facts behind the overview; used to (re)build the narrative. */
+  facts?: ProjectFacts
+  /** The full AI report served by /api/deep-analysis (once generated). */
+  deepAnalysis?: DeepAnalysis
 }
 
 export const COMPLEXITY_BUCKETS: ComplexityBucket[] = [

@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Book,
   Folder,
+  Sparkles,
 } from 'lucide-react'
 
 const items = [
@@ -21,6 +22,7 @@ const items = [
   { label: 'Analyze', icon: Search, to: '/analyze' },
   { divider: true, label: 'Analysis' },
   { label: 'Overview', icon: Layers, to: '/overview' },
+  { label: 'Deep Analysis', icon: Sparkles, to: '/deep-analysis' },
   { label: 'Modules', icon: LayoutList, to: '/modules' },
   { label: 'Code Analysis', icon: Code, to: '/code' },
   { label: 'Security', icon: Shield, to: '/security' },

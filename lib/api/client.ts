@@ -4,6 +4,7 @@ import type {
   ArchitectureNode,
   ComplexityBucket,
   ComplexityFinding,
+  DeepAnalysis,
   DependencyRecord,
   EvidenceItem,
   FunctionRecord,
@@ -102,6 +103,35 @@ export const api = {
     const data = (await res.json()) as { overview?: AnalysisOverview }
     if (!data.overview) throw new FileTreeError('Analysis returned no overview data.', 502)
     return data.overview
+  },
+
+  /**
+   * The full AI deep-analysis report for a container, from /api/deep-analysis.
+   * The report is generated and cached by /api/analysis; this only reads it.
+   * Resolves to null when it hasn't been generated (no LLM configured, or the
+   * container hasn't been analyzed) so the page can render a clear empty state.
+   */
+  async getDeepAnalysis(containerId: string): Promise<DeepAnalysis | null> {
+    let res: Response
+    try {
+      res = await fetch(`/api/deep-analysis?containerId=${encodeURIComponent(containerId)}`)
+    } catch {
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    if (!res.ok) {
+      let message = `Deep analysis request failed with status ${res.status}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) message = body.error
+      } catch {
+        // Non-JSON error body; keep the status-based message.
+      }
+      throw new FileTreeError(message, res.status)
+    }
+
+    const data = (await res.json()) as { deepAnalysis?: DeepAnalysis | null }
+    return data.deepAnalysis ?? null
   },
 
   getArchitecture(): ArchitectureNode[] {
