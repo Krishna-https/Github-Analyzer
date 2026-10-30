@@ -13,12 +13,27 @@ import type {
 /* Container dump contract                                            */
 /* ------------------------------------------------------------------ */
 
+export interface DumpContributor {
+  name: string
+  commits: number
+}
+
+/** Per-file change volume over the last N commits. */
+export interface DumpChurn {
+  file: string
+  commits: number
+  insertions: number
+  deletions: number
+}
+
 export interface DumpGitInfo {
   remoteUrl: string | null
   branch: string | null
   headSha: string | null
   lastCommit: string | null
   lastCommitDate: string | null
+  commitCount?: number | null
+  contributors?: DumpContributor[]
 }
 
 export interface DumpFile {
@@ -34,7 +49,13 @@ export interface AnalysisDump {
   repoExists: boolean
   git: DumpGitInfo
   files: DumpFile[]
-  truncated: { content: boolean }
+  churn?: DumpChurn[]
+  truncated: {
+    content: boolean
+    filesTotal?: number
+    filesWithContent?: number
+    contentBytes?: number
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -108,6 +129,8 @@ export interface ProjectStack {
 export interface ImportEdge {
   from: string
   to: string
+  /** 1-based line of the import statement, when known. */
+  line?: number
 }
 
 /** A detected HTTP route / page. */
@@ -115,6 +138,10 @@ export interface CodeRoute {
   method: string
   path: string
   file: string
+  /** 1-based line of the handler/registration, when known. */
+  line?: number
+  /** Handler symbol name (e.g. `GET`, `createUser`), when known. */
+  handler?: string
 }
 
 /** A detected data model / schema entity. */
@@ -123,6 +150,49 @@ export interface CodeModel {
   kind: string
   file: string
   fields: string[]
+  /** 1-based line where the model is declared, when known. */
+  line?: number
+}
+
+export type CodeSymbolKind = 'function' | 'class' | 'method' | 'component' | 'const'
+
+/** A declared symbol with an exact source location (from the AST pass). */
+export interface CodeSymbol {
+  name: string
+  kind: CodeSymbolKind
+  file: string
+  line: number
+  endLine?: number
+  exported?: boolean
+  /** Callee names found inside this symbol's body (unresolved). */
+  calls?: string[]
+}
+
+/** A resolved call edge between two declared symbols. */
+export interface CallEdge {
+  /** `${file}:${line}:${name}` of the caller. */
+  from: string
+  /** `${file}:${line}:${name}` of the callee. */
+  to: string
+  file: string
+  line: number
+}
+
+/** A file ranked by change volume and code size. */
+export interface Hotspot {
+  file: string
+  commits: number
+  insertions: number
+  deletions: number
+  score: number
+}
+
+/** Repository history signals derived from the container's git metadata. */
+export interface GitInsights {
+  commitCount: number | null
+  contributors: DumpContributor[]
+  churn: DumpChurn[]
+  hotspots: Hotspot[]
 }
 
 /** A selected, size-capped file excerpt sent to the model. */
@@ -131,6 +201,8 @@ export interface FileExcerpt {
   reason: string
   content: string
   truncated: boolean
+  startLine?: number
+  endLine?: number
 }
 
 /** Project configuration extracted from manifests and infra files. */
@@ -140,6 +212,10 @@ export interface RepoConfig {
   envKeys: string[]
   composeServices: string[]
   ciWorkflows: string[]
+  /** A Dockerfile was found in the repository. */
+  hasDockerfile?: boolean
+  /** A Makefile was found in the repository. */
+  hasMakefile?: boolean
 }
 
 /** A per-module roll-up; the deterministic seed for a future map-reduce pass. */
@@ -164,6 +240,12 @@ export interface CodeInsights {
   config: RepoConfig
   moduleSummaries: ModuleSummary[]
   excerpts: FileExcerpt[]
+  /** Declared symbols with exact source locations (JS/TS AST pass). */
+  symbols: CodeSymbol[]
+  /** Resolved call edges between declared symbols. */
+  calls: CallEdge[]
+  /** Git history signals (churn, contributors, hotspots). */
+  git: GitInsights
 }
 
 /**
@@ -195,10 +277,18 @@ export interface ProjectFacts {
 /* Cached bundle                                                       */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Bump when the extracted shape changes so cached bundles are re-computed
+ * instead of being served with missing fields. Old bundles stay readable; the
+ * API just treats them as stale.
+ */
+export const ANALYSIS_SCHEMA_VERSION = 2
+
 export interface AnalysisBundle {
   containerId: string
   headSha: string | null
   computedAt: string
+  schemaVersion?: number
   overview: AnalysisOverview
   // Future sections (code explorer metadata, issues, dependencies page) read
   // these records from the same bundle instead of recomputing.

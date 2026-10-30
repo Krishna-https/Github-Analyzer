@@ -9,6 +9,7 @@ import { parseDependencies } from './manifests'
 import { parseSource } from './parser'
 import { buildSummary } from './summary'
 import {
+  ANALYSIS_SCHEMA_VERSION,
   COMPLEXITY_BUCKETS,
   complexityBucketName,
   type AnalysisBundle,
@@ -310,7 +311,7 @@ export function analyzeDump(containerId: string, dump: AnalysisDump): AnalysisBu
 
   /* Pass 8 — structured facts, code insights, then the deterministic summary */
   const entryPoints = findEntryPoints(files)
-  const insights = extractCodeInsights(files, parsedFiles, entryPoints)
+  const insights = extractCodeInsights(files, parsedFiles, entryPoints, dump)
 
   const facts: ProjectFacts = {
     repo,
@@ -351,6 +352,7 @@ export function analyzeDump(containerId: string, dump: AnalysisDump): AnalysisBu
     containerId,
     headSha: dump.git.headSha,
     computedAt: overview.computedAt,
+    schemaVersion: ANALYSIS_SCHEMA_VERSION,
     overview,
     files: parsedFiles,
     modules,

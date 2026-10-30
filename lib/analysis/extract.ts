@@ -1,16 +1,21 @@
 import 'server-only'
 
 import type {
+  AnalysisDump,
+  CallEdge,
   CodeInsights,
   CodeModel,
   CodeRoute,
+  CodeSymbol,
   DumpFile,
   FileExcerpt,
+  GitInsights,
   ImportEdge,
   ModuleSummary,
   ParsedFile,
   RepoConfig,
 } from './types'
+import { parseAstFile, type AstFile } from './ast'
 
 /**
  * Structured code extraction — the raw material the deep-analysis LLM uses to
@@ -52,6 +57,19 @@ function normalizeJoin(dir: string, spec: string): string {
   return out.join('/')
 }
 
+/** 1-based line number of a character offset. */
+function lineAt(content: string, index: number): number {
+  let line = 1
+  const end = Math.min(index, content.length)
+  for (let i = 0; i < end; i++) if (content[i] === '\n') line++
+  return line
+}
+
+function isEnvRel(relPath: string): boolean {
+  const name = relPath.slice(relPath.lastIndexOf('/') + 1).toLowerCase()
+  return name === '.env' || name.startsWith('.env.')
+}
+
 const MODULE_EXTS = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.vue', '.svelte', '.astro']
 
 /** Resolve an import specifier to a repo-relative path, or null when external. */
@@ -79,10 +97,12 @@ const EXPRESS_ROUTE_RE =
 const PY_ROUTE_RE = /@\s*[\w.]*\.\s*(get|post|put|patch|delete|route)\s*\(\s*['"]([^'"]+)['"]/g
 const DJANGO_PATH_RE = /\bpath\s*\(\s*['"]([^'"]*)['"]/g
 
+const HTTP_METHOD = /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)$/
+
 /** Next.js App Router: derive the URL from the file path under app/. */
-function nextAppRoute(relPath: string): CodeRoute | null {
+function nextAppRoutes(relPath: string, ast: AstFile | undefined): CodeRoute[] {
   const m = relPath.match(/(?:^|\/)app\/(?:(.*)\/)?(route|page)\.(tsx?|jsx?)$/i)
-  if (!m) return null
+  if (!m) return []
   const segments = (m[1] ?? '')
     .split('/')
     .filter(Boolean)
@@ -95,11 +115,29 @@ function nextAppRoute(relPath: string): CodeRoute | null {
     })
     .filter(Boolean)
   const path = '/' + segments.join('/')
-  return { method: m[2].toLowerCase() === 'route' ? 'ALL' : 'GET', path: path === '/' ? '/' : path, file: relPath }
+  const routePath = path === '/' ? '/' : path
+
+  if (m[2].toLowerCase() === 'route') {
+    // A route.ts exports one handler per HTTP method — cite each exactly.
+    const handlers = (ast?.symbols ?? []).filter((s) => s.exported && HTTP_METHOD.test(s.name))
+    if (handlers.length > 0) {
+      return handlers.map((h) => ({
+        method: h.name,
+        path: routePath,
+        file: relPath,
+        line: h.line,
+        handler: h.name,
+      }))
+    }
+    return [{ method: 'ALL', path: routePath, file: relPath, line: ast?.symbols.find((s) => s.exported)?.line }]
+  }
+
+  const page = ast?.symbols.find((s) => s.exported && s.kind === 'component') ?? ast?.symbols.find((s) => s.exported)
+  return [{ method: 'GET', path: routePath, file: relPath, line: page?.line, handler: page?.name }]
 }
 
 /** Next.js Pages Router: pages/** plus pages/api/**. */
-function nextPagesRoute(relPath: string): CodeRoute | null {
+function nextPagesRoute(relPath: string, ast: AstFile | undefined): CodeRoute | null {
   const m = relPath.match(/(?:^|\/)pages\/(.+)\.(tsx?|jsx?)$/i)
   if (!m) return null
   const raw = m[1]
@@ -107,19 +145,39 @@ function nextPagesRoute(relPath: string): CodeRoute | null {
   const isApi = raw === 'api' || raw.startsWith('api/')
   let path = '/' + raw.replace(/(^|\/)index$/, '').replace(/\/$/, '')
   path = path.replace(/\[\[?\.\.\..+\]\]?/g, '*').replace(/\[([^\]]+)\]/g, ':$1')
-  return { method: isApi ? 'ALL' : 'GET', path: path || '/', file: relPath }
+  const handler = ast?.symbols.find((s) => s.exported)
+  return { method: isApi ? 'ALL' : 'GET', path: path || '/', file: relPath, line: handler?.line, handler: handler?.name }
 }
 
-function detectRoutes(files: DumpFile[]): CodeRoute[] {
+/** Only use the regex fallback on files that actually import Express/Fastify. */
+function usesExpress(content: string): boolean {
+  return /(?:from\s*['"]express['"]|require\(\s*['"]express['"]\s*\)|from\s*['"]fastify['"]|require\(\s*['"]fastify['"]\s*\))/.test(
+    content
+  )
+}
+
+/** The function name passed after an Express route path, e.g. `app.get('/x', handler)`. */
+function expressHandler(content: string, matchEnd: number): string | undefined {
+  const after = content.slice(matchEnd, matchEnd + 200)
+  return after.match(/^\s*,\s*([A-Za-z_$][\w$]*)/)?.[1]
+}
+
+function pythonHandler(content: string, matchEnd: number): string | undefined {
+  const after = content.slice(matchEnd, matchEnd + 400)
+  return after.match(/\bdef\s+([A-Za-z_]\w*)/)?.[1]
+}
+
+function detectRoutes(files: DumpFile[], astByFile: Map<string, AstFile>): CodeRoute[] {
   const routes: CodeRoute[] = []
 
   for (const file of files) {
-    const app = nextAppRoute(file.relPath)
-    if (app) {
-      routes.push(app)
+    const ast = astByFile.get(file.relPath)
+    const appRoutes = nextAppRoutes(file.relPath, ast)
+    if (appRoutes.length > 0) {
+      routes.push(...appRoutes)
       continue
     }
-    const pages = nextPagesRoute(file.relPath)
+    const pages = nextPagesRoute(file.relPath, ast)
     if (pages) {
       routes.push(pages)
       continue
@@ -127,22 +185,52 @@ function detectRoutes(files: DumpFile[]): CodeRoute[] {
     if (!file.content) continue
 
     if (/\.(ts|tsx|js|jsx|mjs|cjs)$/i.test(file.relPath)) {
-      let m: RegExpExecArray | null
-      EXPRESS_ROUTE_RE.lastIndex = 0
-      while ((m = EXPRESS_ROUTE_RE.exec(file.content)) !== null) {
-        routes.push({ method: m[1].toUpperCase(), path: m[2], file: file.relPath })
+      if (ast && ast.routes.length > 0) {
+        for (const route of ast.routes) {
+          routes.push({
+            method: route.method,
+            path: route.path,
+            file: file.relPath,
+            line: route.line,
+            handler: route.handler,
+          })
+        }
+      } else if (usesExpress(file.content)) {
+        let m: RegExpExecArray | null
+        EXPRESS_ROUTE_RE.lastIndex = 0
+        while ((m = EXPRESS_ROUTE_RE.exec(file.content)) !== null) {
+          routes.push({
+            method: m[1].toUpperCase(),
+            path: m[2],
+            file: file.relPath,
+            line: lineAt(file.content, m.index),
+            handler: expressHandler(file.content, m.index + m[0].length),
+          })
+        }
       }
     } else if (/\.py$/i.test(file.relPath)) {
       let m: RegExpExecArray | null
       if (/(^|\/)urls\.py$/i.test(file.relPath)) {
         DJANGO_PATH_RE.lastIndex = 0
         while ((m = DJANGO_PATH_RE.exec(file.content)) !== null) {
-          routes.push({ method: 'ANY', path: '/' + m[1], file: file.relPath })
+          routes.push({
+            method: 'ANY',
+            path: '/' + m[1],
+            file: file.relPath,
+            line: lineAt(file.content, m.index),
+            handler: pythonHandler(file.content, m.index + m[0].length),
+          })
         }
       }
       PY_ROUTE_RE.lastIndex = 0
       while ((m = PY_ROUTE_RE.exec(file.content)) !== null) {
-        routes.push({ method: m[1].toLowerCase() === 'route' ? 'ANY' : m[1].toUpperCase(), path: m[2], file: file.relPath })
+        routes.push({
+          method: m[1].toLowerCase() === 'route' ? 'ANY' : m[1].toUpperCase(),
+          path: m[2],
+          file: file.relPath,
+          line: lineAt(file.content, m.index),
+          handler: pythonHandler(file.content, m.index + m[0].length),
+        })
       }
     }
   }
@@ -174,7 +262,7 @@ function parsePrisma(content: string, relPath: string, out: CodeModel[]): void {
       const fm = t.match(/^(\w+)\s+([\w[\]?]+)/)
       if (fm && fields.length < MAX_MODEL_FIELDS) fields.push(`${fm[1]}: ${fm[2]}`)
     }
-    out.push({ name: m[1], kind: 'Prisma', file: relPath, fields })
+    out.push({ name: m[1], kind: 'Prisma', file: relPath, fields, line: lineAt(content, m.index) })
   }
 }
 
@@ -191,7 +279,7 @@ function parseSql(content: string, relPath: string, out: CodeModel[]): void {
       const name = t.match(/^["`[]?(\w+)["`\]]?/)?.[1]
       if (name && fields.length < MAX_MODEL_FIELDS) fields.push(name)
     }
-    out.push({ name: m[1], kind: 'SQL', file: relPath, fields })
+    out.push({ name: m[1], kind: 'SQL', file: relPath, fields, line: lineAt(content, m.index) })
   }
 }
 
@@ -213,7 +301,7 @@ function parsePyModels(content: string, relPath: string, out: CodeModel[]): void
       const detail = (fm[2] ?? fm[3] ?? '').trim().replace(/\s+/g, ' ')
       if (fields.length < MAX_MODEL_FIELDS) fields.push(detail ? `${fm[1]}: ${detail}` : fm[1])
     }
-    if (fields.length > 0) out.push({ name: header[1], kind, file: relPath, fields })
+    if (fields.length > 0) out.push({ name: header[1], kind, file: relPath, fields, line: i + 1 })
   }
 }
 
@@ -229,18 +317,39 @@ function parseTsModels(content: string, relPath: string, out: CodeModel[]): void
       const fm = raw.trim().match(/^(\w+)\??\s*:\s*([^;]+)/)
       if (fm && fields.length < MAX_MODEL_FIELDS) fields.push(`${fm[1]}: ${fm[2].trim()}`)
     }
-    if (fields.length > 0) out.push({ name: m[1], kind: 'TypeScript', file: relPath, fields })
+    if (fields.length > 0) out.push({ name: m[1], kind: 'TypeScript', file: relPath, fields, line: lineAt(content, m.index) })
   }
 }
 
-function detectModels(files: DumpFile[]): CodeModel[] {
+function detectModels(files: DumpFile[], astByFile: Map<string, AstFile>): CodeModel[] {
   const models: CodeModel[] = []
   for (const file of files) {
     if (!file.content) continue
     if (/\.prisma$/i.test(file.relPath)) parsePrisma(file.content, file.relPath, models)
     else if (/\.sql$/i.test(file.relPath)) parseSql(file.content, file.relPath, models)
     else if (/\.py$/i.test(file.relPath)) parsePyModels(file.content, file.relPath, models)
-    else if (/\.(ts|tsx)$/i.test(file.relPath)) parseTsModels(file.content, file.relPath, models)
+    else if (/\.(ts|tsx)$/i.test(file.relPath)) {
+      const ast = astByFile.get(file.relPath)
+      if (MODEL_FILE_RE.test(file.relPath) && ast && ast.interfaces.length > 0) {
+        // AST members keep nested type literals intact, unlike the regex pass.
+        for (const iface of ast.interfaces) {
+          models.push({
+            name: iface.name,
+            kind:
+              iface.kind === 'enum'
+                ? 'TypeScript enum'
+                : iface.kind === 'type'
+                  ? 'TypeScript type'
+                  : 'TypeScript interface',
+            file: file.relPath,
+            fields: iface.fields,
+            line: iface.line,
+          })
+        }
+      } else {
+        parseTsModels(file.content, file.relPath, models)
+      }
+    }
   }
   return models.slice(0, MAX_MODELS)
 }
@@ -264,6 +373,17 @@ function detectConfig(files: DumpFile[]): RepoConfig {
 
   for (const file of files) {
     const name = file.relPath.slice(file.relPath.lastIndexOf('/') + 1)
+    const lower = name.toLowerCase()
+
+    if (lower === 'dockerfile' || lower.endsWith('.dockerfile')) config.hasDockerfile = true
+    if (lower === 'makefile') config.hasMakefile = true
+
+    if (isEnvRel(file.relPath) && file.content) {
+      for (const line of file.content.split('\n')) {
+        const m = line.match(/^([A-Z][A-Z0-9_]*)=/)
+        if (m) envKeys.add(m[1])
+      }
+    }
 
     if (name === 'package.json' && file.content && file.relPath.split('/').length <= 2) {
       try {
@@ -364,7 +484,8 @@ function buildExcerpts(
   routeFiles: Set<string>,
   modelFiles: Set<string>,
   entryPoints: string[],
-  indegree: Map<string, number>
+  indegree: Map<string, number>,
+  hotspotFiles: Set<string>
 ): FileExcerpt[] {
   const entrySet = new Set(entryPoints)
   const candidates: Array<{ file: DumpFile; score: number; reason: string }> = []
@@ -387,6 +508,9 @@ function buildExcerpts(
     } else if (name === 'package.json' || /^docker-compose.*\.ya?ml$/i.test(name) || /\.prisma$/i.test(name)) {
       score = 75
       reason = 'configuration'
+    } else if (hotspotFiles.has(file.relPath)) {
+      score = 55
+      reason = 'frequently changed'
     } else {
       const inDeg = indegree.get(file.relPath) ?? 0
       if (inDeg > 0) {
@@ -411,10 +535,132 @@ function buildExcerpts(
     const content = file.content ?? ''
     const truncated = content.length > EXCERPT_PER_FILE_BYTES
     const slice = truncated ? content.slice(0, EXCERPT_PER_FILE_BYTES) : content
-    excerpts.push({ path: file.relPath, reason, content: slice, truncated })
+    excerpts.push({
+      path: file.relPath,
+      reason,
+      content: slice,
+      truncated,
+      startLine: 1,
+      endLine: slice.split('\n').length,
+    })
     total += slice.length
   }
   return excerpts
+}
+
+/* ------------------------------------------------------------------ */
+/* Symbols + call graph (AST)                                          */
+/* ------------------------------------------------------------------ */
+
+function buildSymbolsAndCalls(
+  astByFile: Map<string, AstFile>,
+  allPaths: Set<string>
+): { symbols: CodeSymbol[]; calls: CallEdge[] } {
+  const symbols: CodeSymbol[] = []
+  const localByName = new Map<string, Map<string, CodeSymbol>>()
+  const importsByFile = new Map<string, Map<string, string>>()
+
+  for (const [file, ast] of astByFile) {
+    const local = new Map<string, CodeSymbol>()
+    for (const s of ast.symbols) {
+      const sym: CodeSymbol = {
+        name: s.name,
+        kind: s.kind,
+        file,
+        line: s.line,
+        endLine: s.endLine,
+        exported: s.exported,
+        calls: s.calls,
+      }
+      symbols.push(sym)
+      if (!local.has(s.name)) local.set(s.name, sym)
+    }
+    localByName.set(file, local)
+
+    const imports = new Map<string, string>()
+    for (const imp of ast.imports) {
+      for (const raw of imp.names) {
+        const name = raw.startsWith('default:') ? raw.slice(8) : raw.startsWith('*:') ? raw.slice(2) : raw
+        if (!imports.has(name)) imports.set(name, imp.source)
+      }
+    }
+    importsByFile.set(file, imports)
+  }
+
+  const calls: CallEdge[] = []
+  const seen = new Set<string>()
+  const push = (from: CodeSymbol, to: CodeSymbol) => {
+    const fromId = `${from.file}:${from.line}:${from.name}`
+    const toId = `${to.file}:${to.line}:${to.name}`
+    const key = `${fromId}->${toId}`
+    if (seen.has(key)) return
+    seen.add(key)
+    calls.push({ from: fromId, to: toId, file: from.file, line: from.line })
+  }
+
+  for (const sym of symbols) {
+    const local = localByName.get(sym.file)
+    const imported = importsByFile.get(sym.file)
+
+    for (const callee of sym.calls ?? []) {
+      const cleaned = callee.startsWith('new ') ? callee.slice(4) : callee
+      const parts = cleaned.split('.')
+      const base = parts[0]
+      const last = parts[parts.length - 1]
+
+      const dotted = cleaned.includes('.')
+
+      // Same-file call: bare `foo()` or `this.foo()`. Dotted receivers like
+      // `out.push()` are method calls on values, not calls to a local function
+      // that happens to share the name, so don't guess there.
+      const localTarget = !dotted
+        ? local?.get(cleaned)
+        : base === 'this' || base === 'self'
+          ? local?.get(last)
+          : undefined
+      if (localTarget && localTarget !== sym) {
+        push(sym, localTarget)
+        continue
+      }
+
+      // Cross-file call through an imported binding/namespace.
+      const source = imported?.get(base)
+      if (!source) continue
+      const targetFile = resolveImport(sym.file, source, allPaths)
+      if (!targetFile) continue
+      const targetName = dotted ? last : base
+      const target = localByName.get(targetFile)?.get(targetName)
+      if (target && target !== sym) push(sym, target)
+    }
+  }
+
+  return { symbols: symbols.slice(0, 400), calls: calls.slice(0, 500) }
+}
+
+function buildGitInsights(dump: AnalysisDump, parsed: ParsedFile[]): GitInsights {
+  // Older dumps may still contain lockfile/generated churn; filter it here so
+  // hotspots always describe real code.
+  const churnNoise =
+    /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb|composer\.lock|poetry\.lock|pipfile\.lock|cargo\.lock|go\.sum|gemfile\.lock)$|\.(min|map)$|(^|\/)(dist|build|out|vendor|coverage|__snapshots__)\//i
+  const churn = (dump.churn ?? []).filter((c) => !churnNoise.test(c.file))
+  const functionsByFile = new Map(parsed.map((p) => [p.relPath, p.functions]))
+
+  const hotspots = churn
+    .map((c) => {
+      const complexityWeight = 1 + (functionsByFile.get(c.file) ?? 0) / 20
+      const churnVolume = c.insertions + c.deletions
+      const score = Math.round(churnVolume * (1 + Math.log2(1 + c.commits)) * complexityWeight)
+      return { ...c, score }
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 12)
+
+  return {
+    commitCount: dump.git.commitCount ?? null,
+    contributors: dump.git.contributors ?? [],
+    churn,
+    hotspots,
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -424,30 +670,50 @@ function buildExcerpts(
 export function extractCodeInsights(
   files: DumpFile[],
   parsed: ParsedFile[],
-  entryPoints: string[]
+  entryPoints: string[],
+  dump: AnalysisDump
 ): CodeInsights {
   const allPaths = new Set(files.map((f) => f.relPath))
 
-  // Internal import graph + per-file in-degree.
+  // AST pass: exact declarations and call sites for JS/TS files we captured.
+  const astByFile = new Map<string, AstFile>()
+  for (const f of files) {
+    if (!f.content) continue
+    if (!/\.(ts|tsx|js|jsx|mts|cts|mjs|cjs)$/i.test(f.relPath)) continue
+    const ast = parseAstFile(f.relPath, f.content)
+    if (ast) astByFile.set(f.relPath, ast)
+  }
+
+  const { symbols, calls } = buildSymbolsAndCalls(astByFile, allPaths)
+  const git = buildGitInsights(dump, parsed)
+
+  // Internal import graph + per-file in-degree, with exact import lines.
   const imports: ImportEdge[] = []
   const indegree = new Map<string, number>()
   for (const f of parsed) {
-    for (const spec of f.importSources ?? []) {
-      const target = resolveImport(f.relPath, spec, allPaths)
+    const ast = astByFile.get(f.relPath)
+    const specs =
+      ast && ast.imports.length > 0
+        ? ast.imports.map((i) => ({ source: i.source, line: i.line }))
+        : (f.importSources ?? []).map((source) => ({ source, line: undefined }))
+
+    for (const spec of specs) {
+      const target = resolveImport(f.relPath, spec.source, allPaths)
       if (!target || target === f.relPath) continue
-      imports.push({ from: f.relPath, to: target })
+      imports.push({ from: f.relPath, to: target, line: spec.line })
       indegree.set(target, (indegree.get(target) ?? 0) + 1)
     }
   }
 
-  const routes = detectRoutes(files)
-  const models = detectModels(files)
+  const routes = detectRoutes(files, astByFile)
+  const models = detectModels(files, astByFile)
   const config = detectConfig(files)
   const moduleSummaries = summarizeModules(parsed, imports)
 
   const routeFiles = new Set(routes.map((r) => r.file))
   const modelFiles = new Set(models.map((m) => m.file))
-  const excerpts = buildExcerpts(files, routeFiles, modelFiles, entryPoints, indegree)
+  const hotspotFiles = new Set(git.hotspots.map((h) => h.file))
+  const excerpts = buildExcerpts(files, routeFiles, modelFiles, entryPoints, indegree, hotspotFiles)
 
-  return { imports, routes, models, config, moduleSummaries, excerpts }
+  return { imports, routes, models, config, moduleSummaries, excerpts, symbols, calls, git }
 }

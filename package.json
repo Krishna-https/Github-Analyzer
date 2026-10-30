@@ -17,7 +17,8 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "recharts": "^3.10.1",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "typescript": "^5.6.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -27,7 +28,6 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",
-    "tsx": "^4.23.15",
-    "typescript": "^5.6.3"
+    "tsx": "^4.23.15"
   }
 }

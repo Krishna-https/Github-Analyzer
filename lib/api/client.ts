@@ -106,12 +106,12 @@ export const api = {
   },
 
   /**
-   * The full AI deep-analysis report for a container, from /api/deep-analysis.
-   * The report is generated and cached by /api/analysis; this only reads it.
-   * Resolves to null when it hasn't been generated (no LLM configured, or the
-   * container hasn't been analyzed) so the page can render a clear empty state.
+   * The full deep-analysis report for a container, from /api/deep-analysis.
+   * The AI report is generated and cached by /api/analysis; this only reads it,
+   * falling back to a deterministic report built from the cached facts.
+   * `report` is null only when the container was never analyzed.
    */
-  async getDeepAnalysis(containerId: string): Promise<DeepAnalysis | null> {
+  async getDeepAnalysis(containerId: string): Promise<{ report: DeepAnalysis | null; aiAvailable: boolean }> {
     let res: Response
     try {
       res = await fetch(`/api/deep-analysis?containerId=${encodeURIComponent(containerId)}`)
@@ -130,8 +130,37 @@ export const api = {
       throw new FileTreeError(message, res.status)
     }
 
-    const data = (await res.json()) as { deepAnalysis?: DeepAnalysis | null }
-    return data.deepAnalysis ?? null
+    const data = (await res.json()) as { deepAnalysis?: DeepAnalysis | null; aiAvailable?: boolean }
+    return { report: data.deepAnalysis ?? null, aiAvailable: Boolean(data.aiAvailable) }
+  },
+
+  /**
+   * Force a full re-analysis (POST /api/analysis), ignoring the cache. Used to
+   * regenerate the report — e.g. to pick up code insights on an older bundle,
+   * or to produce the AI report after a provider key was added.
+   */
+  async rerunAnalysis(containerId: string): Promise<AnalysisOverview> {
+    let res: Response
+    try {
+      res = await fetch(`/api/analysis?containerId=${encodeURIComponent(containerId)}`, { method: 'POST' })
+    } catch {
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    if (!res.ok) {
+      let message = `Re-analysis failed with status ${res.status}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) message = body.error
+      } catch {
+        // Non-JSON error body; keep the status-based message.
+      }
+      throw new FileTreeError(message, res.status)
+    }
+
+    const data = (await res.json()) as { overview?: AnalysisOverview }
+    if (!data.overview) throw new FileTreeError('Re-analysis returned no overview data.', 502)
+    return data.overview
   },
 
   getArchitecture(): ArchitectureNode[] {

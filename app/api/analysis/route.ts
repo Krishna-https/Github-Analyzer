@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { analyzeDump } from '@/lib/analysis/analyze'
 import { readCachedBundle, writeCachedBundle } from '@/lib/analysis/cache'
+import { buildDeterministicReport } from '@/lib/analysis/deepFallback'
 import { isLlmEnabled, generateDeepAnalysis, projectNarrative } from '@/lib/analysis/llm'
 import { enrichOverview } from '@/lib/github/repoStats'
 import { readAnalysisDump, readContainerHeadSha } from '@/lib/docker/analysisDump'
 import { ContainerError } from '@/lib/docker/errors'
-import type { AnalysisBundle } from '@/lib/analysis/types'
+import { ANALYSIS_SCHEMA_VERSION, type AnalysisBundle } from '@/lib/analysis/types'
 
 export const runtime = 'nodejs'
 
@@ -30,15 +31,27 @@ export const runtime = 'nodejs'
  * the (slow, paid) call runs once per HEAD rather than once per page load.
  */
 async function attachDeepAnalysis(bundle: AnalysisBundle): Promise<AnalysisBundle> {
-  if (bundle.deepAnalysis || !bundle.facts || !isLlmEnabled()) return bundle
+  if (bundle.deepAnalysis || !bundle.facts) return bundle
 
-  const report = await generateDeepAnalysis(bundle.facts)
-  if (!report) return bundle
+  if (isLlmEnabled()) {
+    const report = await generateDeepAnalysis(bundle.facts)
+    if (report) {
+      return {
+        ...bundle,
+        deepAnalysis: report,
+        overview: { ...bundle.overview, narrative: projectNarrative(report) },
+      }
+    }
+  }
 
+  // No provider, or the call failed. The Overview still gets a grounded
+  // narrative from deterministic facts; it is not stored as deepAnalysis so a
+  // later run with a key can upgrade the same bundle.
+  if (bundle.overview.narrative?.model === 'static analysis') return bundle
+  const fallback = buildDeterministicReport(bundle.facts)
   return {
     ...bundle,
-    deepAnalysis: report,
-    overview: { ...bundle.overview, narrative: projectNarrative(report) },
+    overview: { ...bundle.overview, narrative: projectNarrative(fallback) },
   }
 }
 
@@ -53,7 +66,7 @@ export async function GET(request: NextRequest) {
     // every file. Throws 404 when the container is gone.
     const headSha = await readContainerHeadSha(containerId)
     const cached = readCachedBundle(containerId)
-    if (cached && cached.headSha === headSha) {
+    if (cached && cached.headSha === headSha && cached.schemaVersion === ANALYSIS_SCHEMA_VERSION) {
       const bundle = await attachDeepAnalysis(cached)
       if (bundle !== cached) writeCachedBundle(bundle) // persist the new report
       return NextResponse.json({ containerId, overview: await enrichOverview(bundle.overview), cached: true })

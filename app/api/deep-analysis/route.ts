@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readCachedBundle } from '@/lib/analysis/cache'
+import { buildDeterministicReport } from '@/lib/analysis/deepFallback'
+import { isLlmEnabled } from '@/lib/analysis/llm'
 
 export const runtime = 'nodejs'
 
 /**
- * The full AI deep-analysis report for a container's cached bundle.
+ * The full deep-analysis report for a container's cached bundle.
  *
- * This only reads the on-disk bundle (no Docker, no LLM call): the report is
- * generated once by /api/analysis and cached with it. Returns `deepAnalysis:
- * null` when the bundle is missing or was produced without an LLM provider, so
- * the page can show an "unavailable" state instead of erroring.
+ * Resolution order:
+ *  1. the cached AI report, when one was generated;
+ *  2. otherwise a deterministic report built from the cached facts — so the
+ *     section is useful without an LLM key;
+ *  3. otherwise null (the container was never analyzed).
+ *
+ * This only reads the on-disk bundle: no Docker, no LLM call. The paid report is
+ * generated once by /api/analysis. `aiAvailable` lets the UI explain how to
+ * upgrade a deterministic report to the AI one.
  */
 export async function GET(request: NextRequest) {
   const containerId = request.nextUrl.searchParams.get('containerId')
@@ -18,5 +25,11 @@ export async function GET(request: NextRequest) {
   }
 
   const bundle = readCachedBundle(containerId)
-  return NextResponse.json({ containerId, deepAnalysis: bundle?.deepAnalysis ?? null })
+  const deepAnalysis = bundle?.deepAnalysis ?? (bundle?.facts ? buildDeterministicReport(bundle.facts, bundle.computedAt) : null)
+
+  return NextResponse.json({
+    containerId,
+    deepAnalysis,
+    aiAvailable: isLlmEnabled(),
+  })
 }

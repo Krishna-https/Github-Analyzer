@@ -13,7 +13,7 @@ export interface LanguageShare {
   percent: number
   color: string
 }
-
+      
 export interface Repository {
   owner: string
   name: string
@@ -71,17 +71,51 @@ export interface RepoNarrative {
 export interface DeepAnalysis {
   purpose: string
   whatItDoes: string
-  architecture: Array<{ component: string; responsibility: string; connectsTo: string[] }>
+  architecture: Array<{
+    component: string
+    responsibility: string
+    connectsTo: string[]
+    /** Exact files (with `:line` where known) that justify this component. */
+    files?: string[]
+  }>
   dataFlow: Array<{ step: string; detail: string; files: string[] }>
-  domainModel: Array<{ entity: string; fields: string[]; relations: string[] }>
-  keyModules: Array<{ name: string; role: string; keyFiles: string[] }>
+  domainModel: Array<{
+    entity: string
+    fields: string[]
+    relations: string[]
+    /** Where the entity is declared, e.g. `prisma/schema.prisma`. */
+    file?: string
+    line?: number
+  }>
+  keyModules: Array<{
+    name: string
+    role: string
+    keyFiles: string[]
+    /** Declared symbol names inside the module (AST). */
+    symbols?: string[]
+  }>
   techStack: Array<{ name: string; role: string; why: string }>
   howToRun: string[]
   onboarding: string[]
   strengths: string[]
   risks: string[]
+  /** Files with the highest churn × size score. */
+  hotspots?: Array<{ file: string; commits: number; insertions: number; deletions: number; score: number }>
+  contributors?: Array<{ name: string; commits: number }>
+  commitCount?: number | null
   model: string
   generatedAt: string
+  /**
+   * Where the report came from: an LLM (`ai`) or the deterministic static
+   * analysis (`deterministic`). Absent on older cached reports, treated as `ai`.
+   */
+  source?: 'ai' | 'deterministic'
+  /**
+   * Total number of dependencies and their health status.
+   * Populated by the deterministic report from ProjectFacts.
+   */
+  totalDependencies?: number
+  dependencyHealth?: { healthy: number; review: number; vulnerable: number }
 }
 
 export interface AnalysisStep {

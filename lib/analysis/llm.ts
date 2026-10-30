@@ -104,15 +104,34 @@ function factsPayload(facts: ProjectFacts) {
     keyDependencies: facts.keyDependencies,
     moduleSummaries: insights.moduleSummaries.slice(0, 20),
     moduleImportGraph: moduleEdges(facts),
-    fileImports: insights.imports.slice(0, 60).map((e) => `${e.from} → ${e.to}`),
-    routes: insights.routes.map((r) => `${r.method} ${r.path} (${r.file})`),
-    models: insights.models.map((m) => ({ name: m.name, kind: m.kind, file: m.file, fields: m.fields })),
+    fileImports: insights.imports.slice(0, 80).map((e) => `${e.from} → ${e.to}${e.line ? `:${e.line}` : ''}`),
+    routes: insights.routes.map(
+      (r) => `${r.method} ${r.path} (${r.file}${r.line ? `:${r.line}` : ''}${r.handler ? `, ${r.handler}` : ''})`
+    ),
+    models: insights.models.map((m) => ({
+      name: m.name,
+      kind: m.kind,
+      file: m.file,
+      line: m.line,
+      fields: m.fields,
+    })),
+    symbols: insights.symbols.slice(0, 150).map((s) => `${s.file}:${s.line} ${s.kind} ${s.name}`),
+    callGraph: insights.calls
+      .slice(0, 150)
+      .map((c) => `${c.from.split(':').slice(-1)[0]} → ${c.to.split(':').slice(-1)[0]} (${c.file}:${c.line})`),
+    git: {
+      commitCount: insights.git?.commitCount ?? null,
+      contributors: insights.git?.contributors ?? [],
+      hotspots: insights.git?.hotspots ?? [],
+    },
     config: insights.config,
     readmeExcerpt: facts.readmeExcerpt,
     fileExcerpts: insights.excerpts.map((e) => ({
       path: e.path,
       reason: e.reason,
       truncated: e.truncated,
+      startLine: e.startLine ?? 1,
+      endLine: e.endLine,
       content: e.content,
     })),
   }
@@ -124,22 +143,24 @@ const SYSTEM_PROMPT = [
   'Goal: explain things NOT visible on the repository page — how the system actually works, how requests flow, the domain model, how modules relate, and where risk concentrates.',
   'Rules:',
   '- Ground every statement in the provided facts or excerpts. Never invent features, endpoints, entities, or files.',
-  '- When you reference a file, use its exact path from the facts.',
-  '- Prefer specifics (module names, route paths, entity fields) over generic description.',
+  '- When you reference a file, use its exact path from the facts. When a line is provided (routes, models, symbols, callGraph, excerpts), cite it as `path:line`.',
+  '- Use only call edges present in callGraph to describe cross-symbol flow; do not invent calls.',
+  '- Prefer specifics (module names, route paths, entity fields, symbol names) over generic description.',
   '- If evidence is thin, say less rather than guessing.',
   'Respond with a single JSON object and nothing else, matching exactly this shape:',
-  '{"purpose":string,"whatItDoes":string,"architecture":[{"component":string,"responsibility":string,"connectsTo":string[]}],"dataFlow":[{"step":string,"detail":string,"files":string[]}],"domainModel":[{"entity":string,"fields":string[],"relations":string[]}],"keyModules":[{"name":string,"role":string,"keyFiles":string[]}],"techStack":[{"name":string,"role":string,"why":string}],"howToRun":string[],"onboarding":string[],"strengths":string[],"risks":string[]}',
+  '{"purpose":string,"whatItDoes":string,"architecture":[{"component":string,"responsibility":string,"connectsTo":string[],"files":string[]}],"dataFlow":[{"step":string,"detail":string,"files":string[]}],"domainModel":[{"entity":string,"fields":string[],"relations":string[],"file":string,"line":number}],"keyModules":[{"name":string,"role":string,"keyFiles":string[],"symbols":string[]}],"techStack":[{"name":string,"role":string,"why":string}],"howToRun":string[],"onboarding":string[],"strengths":string[],"risks":string[],"hotspots":[{"file":string,"commits":number,"insertions":number,"deletions":number,"score":number}]}',
   'Field guidance:',
   '- purpose: 2-4 sentences on what the project is for.',
   '- whatItDoes: 1 paragraph on the concrete capability, grounded in routes/models/modules.',
-  '- architecture: the main components/layers, each with its responsibility and what it talks to (3-8 items).',
-  '- dataFlow: the request/data lifecycle as ordered steps, each naming the files involved (3-8 steps).',
-  '- domainModel: the real entities and their key fields and relations, from the models/schemas (0-10 items).',
-  '- keyModules: the most important modules, each with its role and key files.',
+  '- architecture: the main components/layers, each with its responsibility, what it talks to, and the exact files (3-8 items).',
+  '- dataFlow: the request/data lifecycle as ordered steps, each naming the exact files or `path:line` involved (3-8 steps). Follow the callGraph where it exists.',
+  '- domainModel: the real entities with key fields, relations, and the schema file/line they came from (0-10 items).',
+  '- keyModules: the most important modules, each with its role, key files, and notable symbol names.',
   '- techStack: notable technologies and why they are inferred to be used.',
-  '- howToRun: how to install/run/test, derived from scripts and config (project-specific).',
-  '- onboarding: where a new contributor should start reading.',
-  '- strengths / risks: grounded observations, especially anything the GitHub page hides.',
+  '- howToRun: how to install/run/test, derived from scripts, Dockerfile/Makefile and config (project-specific).',
+  '- onboarding: where a new contributor should start reading, citing `path:line`.',
+  '- strengths / risks: grounded observations, especially anything the GitHub page hides. Mention hotspots where relevant.',
+  '- hotspots: copy the provided hotspots exactly; do not invent commit/line numbers.',
 ].join('\n')
 
 const MAX_TOKENS = 3000
@@ -168,6 +189,10 @@ function extractJson(text: string): unknown {
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
 function stringList(value: unknown, limit: number): string[] {
@@ -199,7 +224,14 @@ function toDeepAnalysis(raw: unknown, model: string): DeepAnalysis | null {
     whatItDoes: asString(obj.whatItDoes),
     architecture: asRecordList(obj.architecture, 10, (o) => {
       const component = asString(o.component)
-      return component ? { component, responsibility: asString(o.responsibility), connectsTo: stringList(o.connectsTo, 10) } : null
+      return component
+        ? {
+            component,
+            responsibility: asString(o.responsibility),
+            connectsTo: stringList(o.connectsTo, 10),
+            files: stringList(o.files, 8),
+          }
+        : null
     }),
     dataFlow: asRecordList(obj.dataFlow, 10, (o) => {
       const step = asString(o.step)
@@ -207,11 +239,26 @@ function toDeepAnalysis(raw: unknown, model: string): DeepAnalysis | null {
     }),
     domainModel: asRecordList(obj.domainModel, 12, (o) => {
       const entity = asString(o.entity)
-      return entity ? { entity, fields: stringList(o.fields, 20), relations: stringList(o.relations, 10) } : null
+      return entity
+        ? {
+            entity,
+            fields: stringList(o.fields, 20),
+            relations: stringList(o.relations, 10),
+            file: asString(o.file) || undefined,
+            line: asNumber(o.line),
+          }
+        : null
     }),
     keyModules: asRecordList(obj.keyModules, 15, (o) => {
       const name = asString(o.name)
-      return name ? { name, role: asString(o.role), keyFiles: stringList(o.keyFiles, 10) } : null
+      return name
+        ? {
+            name,
+            role: asString(o.role),
+            keyFiles: stringList(o.keyFiles, 10),
+            symbols: stringList(o.symbols, 10),
+          }
+        : null
     }),
     techStack: asRecordList(obj.techStack, 15, (o) => {
       const name = asString(o.name)
@@ -221,8 +268,20 @@ function toDeepAnalysis(raw: unknown, model: string): DeepAnalysis | null {
     onboarding: stringList(obj.onboarding, 10),
     strengths: stringList(obj.strengths, 8),
     risks: stringList(obj.risks, 8),
+    hotspots: asRecordList(obj.hotspots, 12, (o) => {
+      const file = asString(o.file)
+      if (!file) return null
+      return {
+        file,
+        commits: asNumber(o.commits) ?? 0,
+        insertions: asNumber(o.insertions) ?? 0,
+        deletions: asNumber(o.deletions) ?? 0,
+        score: asNumber(o.score) ?? 0,
+      }
+    }),
     model,
     generatedAt: new Date().toISOString(),
+    source: 'ai',
   }
 }
 
@@ -325,7 +384,17 @@ export async function generateDeepAnalysis(facts: ProjectFacts): Promise<DeepAna
         : await callOpenAi(provider, user, controller.signal)
 
     if (!text) return null
-    return toDeepAnalysis(extractJson(text), provider.model)
+    const report = toDeepAnalysis(extractJson(text), provider.model)
+    if (!report) return null
+
+    // History signals are deterministic; always attach the real values even if
+    // the model omitted them, so the UI can show verified hotspots.
+    return {
+      ...report,
+      hotspots: report.hotspots?.length ? report.hotspots : facts.insights?.git?.hotspots?.slice(0, 8),
+      contributors: facts.insights?.git?.contributors?.slice(0, 6),
+      commitCount: facts.insights?.git?.commitCount ?? null,
+    }
   } catch (err) {
     console.warn('deep analysis failed:', err instanceof Error ? err.message : err)
     return null
