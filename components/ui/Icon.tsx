@@ -13,6 +13,10 @@ import {
   Laptop,
   Wrench,
   FlaskConical,
+  Boxes,
+  Folder,
+  Settings,
+  FileCode,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -29,6 +33,10 @@ const map: Record<string, LucideIcon> = {
   Laptop,
   Wrench,
   FlaskConical,
+  Boxes,
+  Folder,
+  Settings,
+  FileCode,
 }
 
 export function ModuleIcon({ name, className = 'w-5 h-5' }: { name: string; className?: string }) {

@@ -148,7 +148,7 @@ export interface ArchitectureNode {
   description: string
 }
 
-export type FunctionStatus = 'Good' | 'Moderate' | 'Needs Review' | 'High' | 'Critical'
+export type FunctionStatus = 'Good' | 'Moderate' | 'Needs Review' | 'High' | 'Critical' | 'Detected'
 
 export interface FunctionRecord {
   name: string
@@ -158,6 +158,12 @@ export interface FunctionRecord {
   calls: number
   status: FunctionStatus
   module: string
+}
+
+/** A real module plus the functions detected inside it. */
+export interface ModuleWithFunctions {
+  module: ModuleRecord
+  functions: FunctionRecord[]
 }
 
 export interface ComplexityBucket {

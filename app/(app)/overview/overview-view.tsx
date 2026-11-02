@@ -383,7 +383,10 @@ function OverviewPane({ containerId }: { containerId: string | null }) {
             >
               <Sparkles className="h-3.5 w-3.5" /> Deep analysis <ArrowRight className="h-3.5 w-3.5" />
             </Link>
-            <Link href="/modules" className="flex items-center gap-1.5 text-xs font-semibold text-white/70 transition-colors hover:text-primary">
+            <Link
+              href={containerId ? `/modules?containerId=${encodeURIComponent(containerId)}` : '/modules'}
+              className="flex items-center gap-1.5 text-xs font-semibold text-white/70 transition-colors hover:text-primary"
+            >
               View modules <ArrowRight className="h-3.5 w-3.5" />
             </Link>
             <Link href="/code" className="flex items-center gap-1.5 text-xs font-semibold text-white/70 transition-colors hover:text-primary">

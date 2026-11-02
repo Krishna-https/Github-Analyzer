@@ -11,6 +11,7 @@ import type {
   Issue,
   LanguageShare,
   ModuleRecord,
+  ModuleWithFunctions,
   RealFileContent,
   Repository,
   Rule,
@@ -103,6 +104,37 @@ export const api = {
     const data = (await res.json()) as { overview?: AnalysisOverview }
     if (!data.overview) throw new FileTreeError('Analysis returned no overview data.', 502)
     return data.overview
+  },
+
+  /**
+   * Modules detected in a cloned runner container, from /api/modules. The
+   * server derives them from the cached analysis bundle (computing it if this is
+   * the first request), so the pages never fall back to sample data silently.
+   *
+   * Throws FileTreeError so callers can distinguish a stale container (404),
+   * an unanalyzable repo (400/502), or an unreachable server (0).
+   */
+  async getModulesFromContainer(containerId: string): Promise<ModuleWithFunctions[]> {
+    let res: Response
+    try {
+      res = await fetch(`/api/modules?containerId=${encodeURIComponent(containerId)}`)
+    } catch {
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    if (!res.ok) {
+      let message = `Modules request failed with status ${res.status}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) message = body.error
+      } catch {
+        // Non-JSON error body; keep the status-based message.
+      }
+      throw new FileTreeError(message, res.status)
+    }
+
+    const data = (await res.json()) as { modules?: ModuleWithFunctions[] }
+    return data.modules ?? []
   },
 
   /**

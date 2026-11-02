@@ -28,6 +28,7 @@ export function StatusBadge({ label }: { label: string }) {
     Open: 'bg-amber-950/80 text-amber-300 ring-1 ring-amber-800/60',
     Reviewed: 'bg-sky-950/80 text-sky-300 ring-1 ring-sky-800/60',
     Fixed: 'bg-emerald-950/80 text-emerald-300 ring-1 ring-emerald-800/60',
+    Detected: 'bg-sky-950/70 text-sky-300 ring-1 ring-sky-800/60',
   }
   return <Badge label={label} className={map[label] ?? 'bg-edge text-white/60'} />
 }
