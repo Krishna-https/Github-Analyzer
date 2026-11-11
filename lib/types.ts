@@ -298,3 +298,44 @@ export interface AnalysisOverview {
   /** AI-written purpose/how-it-works, when an LLM provider is configured. */
   narrative?: RepoNarrative
 }
+
+/**
+ * How completely a repository was cloned into its runner container.
+ *
+ * Computed by comparing the container's git tree (and working tree) against the
+ * file list GitHub reports for the same commit. A repository is only considered
+ * analyzable when every expected file is present and byte coverage is ≥ 99%,
+ * so Overview / Deep Analysis / Modules never present results from a partial
+ * clone as if they were the whole repository.
+ */
+export interface CloneVerification {
+  /** True only when every expected file is present and byte coverage is ≥ 99%. */
+  complete: boolean
+  /** Number of files GitHub reports at the cloned commit. */
+  filesExpected: number
+  /** Expected files present in the container's git tree. */
+  filesPresent: number
+  filesMissing: number
+  /** A small sample of missing paths, for the UI. */
+  missingSample: string[]
+  /** Tracked files that are missing from the working tree (checkout incomplete). */
+  filesDeleted: number
+  bytesExpected: number
+  bytesPresent: number
+  /** 0–100, rounded down so 100 means truly complete. */
+  completenessPercent: number
+  bytesPercent: number
+  headSha: string | null
+  remoteHeadSha: string | null
+  /** null when the remote HEAD could not be read. */
+  headMatch: boolean | null
+  /** Where the expected file list came from. */
+  source: 'github-api' | 'git-fallback'
+  /** GitHub truncated its recursive tree (very large repositories). */
+  githubTruncated: boolean
+  /** GitHub's compressed repository size, in KB. */
+  repoSizeKb: number | null
+  checkedAt: string
+  /** Human-readable explanation when `complete` is false. */
+  reason: string | null
+}

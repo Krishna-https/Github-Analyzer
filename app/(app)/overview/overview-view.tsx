@@ -2,16 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowRight, Check, ShieldAlert, Sparkles, Star, Target, TrendingDown, TrendingUp } from 'lucide-react'
 import { Card, SectionTitle } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { LanguageDonut } from '@/components/charts/LanguageDonut'
 import { ComplexityBars } from '@/components/charts/ComplexityBars'
-import { api, FileTreeError } from '@/lib/api/client'
+import { CloneIncompletePanel } from '@/components/clone/CloneIncompletePanel'
+import { api, CloneIncompleteError, FileTreeError } from '@/lib/api/client'
 import { useAnalysis } from '@/context/AnalysisContext'
 import { complexityBuckets, mockDependencies, mockEvidence, mockRepository } from '@/data/mockData'
-import type { AnalysisOverview, EvidenceItem } from '@/lib/types'
+import type { AnalysisOverview, CloneVerification, EvidenceItem } from '@/lib/types'
 
 /** Compact count for at-a-glance popularity: 1284 → "1.3k". */
 function formatCount(n: number): string {
@@ -151,8 +152,11 @@ export function OverviewView() {
 }
 
 function OverviewPane({ containerId }: { containerId: string | null }) {
+  const router = useRouter()
+  const { resetContainer, setCloneVerification, startAnalysis, cloneVerification } = useAnalysis()
   const [real, setReal] = useState<AnalysisOverview | null>(null)
   const [realError, setRealError] = useState<string | null>(null)
+  const [cloneBlocked, setCloneBlocked] = useState<CloneVerification | null>(null)
   const [loading, setLoading] = useState(Boolean(containerId))
 
   useEffect(() => {
@@ -169,7 +173,11 @@ function OverviewPane({ containerId }: { containerId: string | null }) {
       })
       .catch((err) => {
         if (cancelled) return
-        setRealError(err instanceof FileTreeError ? err.message : 'Could not analyze this repository.')
+        if (err instanceof CloneIncompleteError) {
+          setCloneBlocked(err.verification)
+        } else {
+          setRealError(err instanceof FileTreeError ? err.message : 'Could not analyze this repository.')
+        }
         setLoading(false)
       })
 
@@ -186,6 +194,36 @@ function OverviewPane({ containerId }: { containerId: string | null }) {
 
   if (loading && containerId) {
     return <OverviewSkeleton />
+  }
+
+  // A failed clone removes its container but leaves its verification in
+  // context. Never fall back to sample data for that state.
+  if (!containerId && cloneVerification && !cloneVerification.complete) {
+    return (
+      <CloneIncompletePanel
+        verification={cloneVerification}
+        onRetry={() => {
+          resetContainer()
+          setCloneVerification(null)
+          startAnalysis()
+          router.push('/analyze?reclone=1')
+        }}
+      />
+    )
+  }
+
+  if (cloneBlocked) {
+    return (
+      <CloneIncompletePanel
+        verification={cloneBlocked}
+        onRetry={() => {
+          resetContainer()
+          setCloneVerification(null)
+          startAnalysis()
+          router.push('/analyze?reclone=1')
+        }}
+      />
+    )
   }
 
   return (

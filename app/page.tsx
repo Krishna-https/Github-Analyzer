@@ -9,7 +9,6 @@ import {
   ShieldAlert,
   Github,
   ArrowRight,
-  Wand2,
   FileCode,
   Boxes,
   Package,
@@ -46,57 +45,28 @@ const flow = [
 ]
 
 export default function Home() {
-  const { setRepoUrl, setContainerId, startAnalysis } = useAnalysis()
+  const { setRepoUrl, resetContainer, setCloneVerification, startAnalysis } = useAnalysis()
   const [url, setUrl] = useState('')
   const router = useRouter()
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault()
+  const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
 
-  const repoUrl = url.trim()
+    const repoUrl = url.trim()
 
-  if (!repoUrl) {
-    alert('Please enter a GitHub repository URL')
-    return
-  }
-
-  try {
-    console.log('Sending repository URL:', repoUrl)
-
-    const response = await fetch('/api/clone', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        repoUrl,
-      }),
-    })
-
-    const data = await response.json()
-
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || 'Repository clone failed')
+    if (!repoUrl) {
+      alert('Please enter a GitHub repository URL')
+      return
     }
 
-    // Keep the containerId so the rest of the app (sidebar, explorer) can open
-    // the real file tree instead of making the user hand-copy a 64-hex ID.
-    setContainerId(data.containerId as string)
+    // The clone (and its real completeness check) runs on the analyze screen so
+    // the percentage is shown there. Clear any previous container first.
     setRepoUrl(repoUrl)
+    resetContainer()
+    setCloneVerification(null)
     startAnalysis()
-
     router.push('/analyze')
-
-  } catch (error) {
-    console.error('Error:', error)
-
-    alert(
-      error instanceof Error
-        ? error.message
-        : 'Something went wrong'
-    )
   }
-}
 
   return (
     <div className="min-h-screen bg-ink">

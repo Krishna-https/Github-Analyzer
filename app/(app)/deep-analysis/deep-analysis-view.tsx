@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   ArrowRight,
   Boxes,
@@ -21,9 +21,10 @@ import {
   Package,
 } from 'lucide-react'
 import { Card, SectionTitle } from '@/components/ui/Card'
-import { api, FileTreeError } from '@/lib/api/client'
+import { CloneIncompletePanel } from '@/components/clone/CloneIncompletePanel'
+import { api, CloneIncompleteError, FileTreeError } from '@/lib/api/client'
 import { useAnalysis } from '@/context/AnalysisContext'
-import type { DeepAnalysis } from '@/lib/types'
+import type { CloneVerification, DeepAnalysis } from '@/lib/types'
 
 function FileChips({ files }: { files: string[] }) {
   if (files.length === 0) return null
@@ -149,9 +150,12 @@ export function DeepAnalysisView() {
 }
 
 function DeepAnalysisPane({ containerId }: { containerId: string | null }) {
+  const router = useRouter()
+  const { resetContainer, setCloneVerification, startAnalysis, cloneVerification } = useAnalysis()
   const [report, setReport] = useState<DeepAnalysis | null>(null)
   const [aiAvailable, setAiAvailable] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cloneBlocked, setCloneBlocked] = useState<CloneVerification | null>(null)
   const [loading, setLoading] = useState(Boolean(containerId))
   const [rerunning, setRerunning] = useState(false)
 
@@ -169,7 +173,11 @@ function DeepAnalysisPane({ containerId }: { containerId: string | null }) {
       })
       .catch((err) => {
         if (cancelled) return
-        setError(err instanceof FileTreeError ? err.message : 'Could not load the deep analysis.')
+        if (err instanceof CloneIncompleteError) {
+          setCloneBlocked(err.verification)
+        } else {
+          setError(err instanceof FileTreeError ? err.message : 'Could not load the deep analysis.')
+        }
         setLoading(false)
       })
 
@@ -188,13 +196,48 @@ function DeepAnalysisPane({ containerId }: { containerId: string | null }) {
       setReport(data.report)
       setAiAvailable(data.aiAvailable)
     } catch (err) {
-      setError(err instanceof FileTreeError ? err.message : 'Re-analysis failed. Check that Docker is running.')
+      if (err instanceof CloneIncompleteError) {
+        setCloneBlocked(err.verification)
+        setReport(null)
+      } else {
+        setError(err instanceof FileTreeError ? err.message : 'Re-analysis failed. Check that Docker is running.')
+      }
     } finally {
       setRerunning(false)
     }
   }, [containerId])
 
   if (loading) return <DeepAnalysisSkeleton />
+
+  // A failed clone removes its container but leaves its verification in
+  // context. Keep the section locked instead of showing an empty success state.
+  if (!containerId && cloneVerification && !cloneVerification.complete) {
+    return (
+      <CloneIncompletePanel
+        verification={cloneVerification}
+        onRetry={() => {
+          resetContainer()
+          setCloneVerification(null)
+          startAnalysis()
+          router.push('/analyze?reclone=1')
+        }}
+      />
+    )
+  }
+
+  if (cloneBlocked) {
+    return (
+      <CloneIncompletePanel
+        verification={cloneBlocked}
+        onRetry={() => {
+          resetContainer()
+          setCloneVerification(null)
+          startAnalysis()
+          router.push('/analyze?reclone=1')
+        }}
+      />
+    )
+  }
 
   if (!containerId) {
     return (

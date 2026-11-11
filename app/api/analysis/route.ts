@@ -3,6 +3,7 @@ import { analyzeDump } from '@/lib/analysis/analyze'
 import { readCachedBundle, writeCachedBundle } from '@/lib/analysis/cache'
 import { buildDeterministicReport } from '@/lib/analysis/deepFallback'
 import { isLlmEnabled, generateDeepAnalysis, projectNarrative } from '@/lib/analysis/llm'
+import { getOrComputeCloneVerification } from '@/lib/clone/status'
 import { enrichOverview } from '@/lib/github/repoStats'
 import { readAnalysisDump, readContainerHeadSha } from '@/lib/docker/analysisDump'
 import { ContainerError } from '@/lib/docker/errors'
@@ -29,11 +30,24 @@ export const runtime = 'nodejs'
  * Return the bundle with the AI deep analysis attached, generating it only when
  * it's missing and a provider is configured. The caller persists the result, so
  * the (slow, paid) call runs once per HEAD rather than once per page load.
+ *
+ * A deterministic report is upgraded automatically once a provider key exists,
+ * so "ran before the key was added" does not leave the Deep Analysis page stuck
+ * on the static report forever.
  */
 async function attachDeepAnalysis(bundle: AnalysisBundle): Promise<AnalysisBundle> {
-  if (bundle.deepAnalysis || !bundle.facts) return bundle
+  // Already an AI report — keep it.
+  if (bundle.deepAnalysis?.source === 'ai') return bundle
 
-  if (isLlmEnabled()) {
+  if (!bundle.facts) return bundle
+
+  const hasStaleReport =
+    bundle.deepAnalysis &&
+    (bundle.deepAnalysis.source === 'deterministic' || !bundle.deepAnalysis.source)
+
+  // Generate when there is no report yet, or when the cached report is the
+  // deterministic one and a key is now available.
+  if ((!bundle.deepAnalysis || hasStaleReport) && isLlmEnabled()) {
     const report = await generateDeepAnalysis(bundle.facts)
     if (report) {
       return {
@@ -55,6 +69,26 @@ async function attachDeepAnalysis(bundle: AnalysisBundle): Promise<AnalysisBundl
   }
 }
 
+/**
+ * Refuse to analyze a container whose clone is incomplete. The verification is
+ * cached by `/api/clone`, so this is typically a file read rather than another
+ * GitHub round trip.
+ */
+async function cloneGate(containerId: string): Promise<NextResponse | null> {
+  const verification = await getOrComputeCloneVerification(containerId)
+  if (verification.complete) return null
+
+  return NextResponse.json(
+    {
+      error:
+        verification.reason ??
+        'The repository clone is incomplete, so analysis was not started. Re-clone the repository and try again.',
+      verification,
+    },
+    { status: 409 }
+  )
+}
+
 export async function GET(request: NextRequest) {
   const containerId = request.nextUrl.searchParams.get('containerId')
   if (!containerId) {
@@ -65,6 +99,11 @@ export async function GET(request: NextRequest) {
     // Fast path: HEAD unchanged → serve the cached bundle without re-reading
     // every file. Throws 404 when the container is gone.
     const headSha = await readContainerHeadSha(containerId)
+
+    // Never serve/analyse a partial clone, even if a bundle is cached.
+    const blocked = await cloneGate(containerId)
+    if (blocked) return blocked
+
     const cached = readCachedBundle(containerId)
     if (cached && cached.headSha === headSha && cached.schemaVersion === ANALYSIS_SCHEMA_VERSION) {
       const bundle = await attachDeepAnalysis(cached)
@@ -95,6 +134,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const blocked = await cloneGate(containerId)
+    if (blocked) return blocked
+
     const dump = await readAnalysisDump(containerId)
     const bundle = await attachDeepAnalysis(analyzeDump(containerId, dump))
     writeCachedBundle(bundle)

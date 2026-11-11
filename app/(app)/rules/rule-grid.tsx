@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Book } from 'lucide-react'
 import { SeverityBadge } from '@/components/ui/Badge'
@@ -10,14 +10,13 @@ export function RuleGrid({ groups }: { groups: { label: string; rules: Rule[] }[
   const params = useSearchParams()
   const activeRuleId = params.get('rule')
   const containerRef = useRef<HTMLDivElement>(null)
-  const [highlight, setHighlight] = useState<string | null>(activeRuleId)
+  // The highlighted rule is derived from the URL, so it needs no local state.
+  const highlight = activeRuleId
 
   useEffect(() => {
-    setHighlight(activeRuleId)
-    if (activeRuleId) {
-      const el = document.getElementById('rule-' + activeRuleId)
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
+    if (!activeRuleId) return
+    const el = document.getElementById('rule-' + activeRuleId)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [activeRuleId])
 
   return (

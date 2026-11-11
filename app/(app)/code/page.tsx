@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { Search, Activity, ArrowUpRight } from 'lucide-react'
 import { api } from '@/lib/api/client'
@@ -18,17 +18,13 @@ const STATS = [
 
 export default function CodeAnalysis() {
   const [search, setSearch] = useState('')
-  const functions = api.getFunctions()
   const buckets = api.getComplexityBuckets()
   const complexityFindings = api.getComplexityFindings()
 
-  const filtered = useMemo(() => {
+  const filtered = api.getFunctions().filter((fn) => {
     const q = search.toLowerCase()
-    return functions.filter(
-      (fn) =>
-        !q || fn.name.toLowerCase().includes(q) || fn.file.toLowerCase().includes(q) || fn.module.toLowerCase().includes(q)
-    )
-  }, [search])
+    return !q || fn.name.toLowerCase().includes(q) || fn.file.toLowerCase().includes(q) || fn.module.toLowerCase().includes(q)
+  })
 
   return (
     <div className="space-y-6 animate-fade-up">

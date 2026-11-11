@@ -58,7 +58,7 @@ function stub(path: string): string[] {
   ]
 }
 
-function stubMeta(path: string, content: string[], _module: string): Pick<SourceFile, 'functions' | 'imports' | 'usedBy' | 'calls' | 'issues'> {
+function stubMeta(path: string, content: string[]): Pick<SourceFile, 'functions' | 'imports' | 'usedBy' | 'calls' | 'issues'> {
   const fnCount = content.filter((l) => l.trim().startsWith('export ') && l.includes('(')).length
   const impCount = content.filter((l) => l.trim().startsWith('import ')).length
   const base = pascal(path.split('/').pop() || 'file')
@@ -907,7 +907,7 @@ function buildStore(): Record<string, SourceFile> {
       module: base,
       language: languageFor(path),
       lines: content.length,
-      ...stubMeta(path, content, base),
+      ...stubMeta(path, content),
       usedBy: USED_BY_MAP[path] ?? [`${pascal(path.split('/').pop() || 'file')}Consumer`],
       calls: CALLS_MAP[path] ?? ['module internal'],
       issues: 0,

@@ -94,7 +94,7 @@ export async function fetchRepoStats(owner: string, name: string): Promise<Githu
   const cached = readCache(owner, name)
   if (cached) return cached
 
-  const token = process.env.GITHUB_TOKEN
+  const token = process.env.GITHUB_TOKEN || process.env.GITHUB_API_KEY
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 

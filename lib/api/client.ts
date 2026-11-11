@@ -1,7 +1,7 @@
 import type {
   AnalysisOverview,
-  AnalysisStep,
   ArchitectureNode,
+  CloneVerification,
   ComplexityBucket,
   ComplexityFinding,
   DeepAnalysis,
@@ -17,7 +17,6 @@ import type {
   SecurityFinding,
 } from '../types'
 import {
-  analysisSteps,
   complexityBuckets,
   mockArchitecture,
   mockComplexityFindings,
@@ -43,18 +42,91 @@ export class FileTreeError extends Error {
   }
 }
 
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms))
+/**
+ * Raised when the server refuses to analyze because the repository clone is
+ * incomplete. Carries the full verification so pages can explain exactly how
+ * many files/bytes are missing instead of falling back to sample data.
+ */
+export class CloneIncompleteError extends FileTreeError {
+  constructor(message: string, readonly verification: CloneVerification) {
+    super(message, 409)
+    this.name = 'CloneIncompleteError'
+  }
+}
+
+/** Turn a non-2xx response into the right typed error (clone gate included). */
+async function errorFromResponse(res: Response, fallback: string): Promise<FileTreeError> {
+  let message = fallback
+
+  try {
+    const body = (await res.json()) as { error?: string; verification?: CloneVerification }
+    if (body.error) message = body.error
+    if (body.verification && (res.status === 409 || res.status === 422)) {
+      return new CloneIncompleteError(message, body.verification)
+    }
+  } catch {
+    // Non-JSON error body; keep the fallback message.
+  }
+
+  return new FileTreeError(message, res.status)
+}
 
 /*
- * Future-ready service layer.
- * Every method below would one day call a real analysis backend.
- * They are intentionally named like remote endpoints so swapping the
- * mock implementation for fetch() calls requires no page changes.
+ * Service layer.
+ * Real methods talk to the server routes; the remaining getters expose the
+ * sample data used by the prototype-only sections.
  */
 export const api = {
-  async analyzeRepository(_url: string): Promise<{ steps: AnalysisStep[]; repository: Repository }> {
-    await delay(200)
-    return { steps: analysisSteps, repository: mockRepository }
+  /**
+   * Clone a repository into a runner container and wait until the server has
+   * verified that every file GitHub reports is present. The request is
+   * intentionally long-lived; the server removes the container on failure.
+   */
+  async cloneRepository(repoUrl: string): Promise<{ containerId: string; verification: CloneVerification }> {
+    let res: Response
+    try {
+      res = await fetch('/api/clone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoUrl }),
+      })
+    } catch {
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    const data = (await res.json().catch(() => ({}))) as {
+      success?: boolean
+      containerId?: string
+      verification?: CloneVerification
+      error?: string
+    }
+
+    if (!res.ok || !data.success || !data.containerId || !data.verification) {
+      if (data.verification && res.status === 422) {
+        throw new CloneIncompleteError(data.error ?? 'The repository clone is incomplete.', data.verification)
+      }
+      throw new FileTreeError(data.error ?? `Clone failed with status ${res.status}`, res.status)
+    }
+
+    return { containerId: data.containerId, verification: data.verification }
+  },
+
+  /** Re-read/recompute the clone verification for an existing container. */
+  async getCloneStatus(containerId: string): Promise<CloneVerification> {
+    let res: Response
+    try {
+      res = await fetch(`/api/clone/status?containerId=${encodeURIComponent(containerId)}`)
+    } catch {
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    if (!res.ok) {
+      throw await errorFromResponse(res, `Clone check failed with status ${res.status}`)
+    }
+
+    const data = (await res.json()) as { verification?: CloneVerification }
+    if (!data.verification) throw new FileTreeError('Clone check returned no verification.', 502)
+    return data.verification
   },
 
   getRepositoryOverview(): {
@@ -90,14 +162,7 @@ export const api = {
     }
 
     if (!res.ok) {
-      let message = `Analysis request failed with status ${res.status}`
-      try {
-        const body = (await res.json()) as { error?: string }
-        if (body.error) message = body.error
-      } catch {
-        // Non-JSON error body; keep the status-based message.
-      }
-      throw new FileTreeError(message, res.status)
+      throw await errorFromResponse(res, `Analysis request failed with status ${res.status}`)
     }
 
     const data = (await res.json()) as { overview?: AnalysisOverview }
@@ -120,14 +185,7 @@ export const api = {
     }
 
     if (!res.ok) {
-      let message = `Deep analysis request failed with status ${res.status}`
-      try {
-        const body = (await res.json()) as { error?: string }
-        if (body.error) message = body.error
-      } catch {
-        // Non-JSON error body; keep the status-based message.
-      }
-      throw new FileTreeError(message, res.status)
+      throw await errorFromResponse(res, `Deep analysis request failed with status ${res.status}`)
     }
 
     const data = (await res.json()) as { deepAnalysis?: DeepAnalysis | null; aiAvailable?: boolean }
@@ -148,14 +206,7 @@ export const api = {
     }
 
     if (!res.ok) {
-      let message = `Re-analysis failed with status ${res.status}`
-      try {
-        const body = (await res.json()) as { error?: string }
-        if (body.error) message = body.error
-      } catch {
-        // Non-JSON error body; keep the status-based message.
-      }
-      throw new FileTreeError(message, res.status)
+      throw await errorFromResponse(res, `Re-analysis failed with status ${res.status}`)
     }
 
     const data = (await res.json()) as { overview?: AnalysisOverview }

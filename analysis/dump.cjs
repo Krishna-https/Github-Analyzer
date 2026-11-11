@@ -6,6 +6,7 @@
 // history, emitted as a single JSON document on stdout. The <script> string is a
 // constant shipped by the app (never user input) and is passed as a bare argv
 // element, so nothing here is interpolated through a shell.
+/* eslint-disable @typescript-eslint/no-require-imports */
 'use strict'
 const fs = require('fs')
 const path = require('path')
