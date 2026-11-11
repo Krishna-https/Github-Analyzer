@@ -58,7 +58,7 @@ function isReviewable(version: string): boolean {
   return false
 }
 
-function record(name: string, version: string): DependencyRecord {
+function record(name: string, version: string, manifest: string): DependencyRecord {
   const v = version?.trim() || 'latest'
   const review = isReviewable(v)
   return {
@@ -67,6 +67,7 @@ function record(name: string, version: string): DependencyRecord {
     category: categoryOf(name),
     status: review ? 'review' : 'healthy',
     reason: review ? 'Floating or non-semver version range' : undefined,
+    manifest,
   }
 }
 
@@ -83,7 +84,7 @@ function parsePackageJson(content: string, out: DependencyRecord[], manifests: s
     }
     for (const [name, version] of Object.entries({ ...pkg.dependencies, ...pkg.devDependencies })) {
       if (name === '') continue
-      out.push(record(name, version ?? 'latest'))
+      out.push(record(name, version ?? 'latest', 'package.json'))
     }
   } catch {
     // Malformed manifest — skip silently; the evidence pass already knows it exists.
@@ -97,7 +98,7 @@ function parseRequirements(content: string, out: DependencyRecord[], manifests: 
     if (!line || line.startsWith('#') || line.startsWith('-')) continue
     const m = line.match(/^([A-Za-z0-9_.\-]+)\s*(?:==|>=|<=|~=|!=|<|>)?\s*([^;\s]*)/)
     if (!m || !m[1]) continue
-    out.push(record(m[1], m[2] || 'latest'))
+    out.push(record(m[1], m[2] || 'latest', 'requirements.txt'))
   }
 }
 
@@ -117,7 +118,7 @@ function parseGoMod(content: string, out: DependencyRecord[], manifests: string[
     const m = line.match(/^require\s+([^\s]+)\s+([^\s]+)/) // single line
     const b = inBlock ? line.match(/^([^\s]+)\s+([^\s]+)/) : null // block line
     const hit = m ?? b
-    if (hit) out.push(record(hit[1], hit[2]))
+    if (hit) out.push(record(hit[1], hit[2], 'go.mod'))
   }
 }
 
@@ -132,7 +133,7 @@ function parseCargo(content: string, out: DependencyRecord[], manifests: string[
     }
     if (!inDeps) continue
     const m = line.match(/^([A-Za-z0-9_\-]+)\s*=\s*"?([^"#]+)"?/)
-    if (m) out.push(record(m[1], m[2].trim()))
+    if (m) out.push(record(m[1], m[2].trim(), 'Cargo.toml'))
   }
 }
 
@@ -141,7 +142,7 @@ function parseComposer(content: string, out: DependencyRecord[], manifests: stri
   try {
     const pkg = JSON.parse(content) as { require?: Record<string, string>; 'require-dev'?: Record<string, string> }
     for (const [name, version] of Object.entries({ ...pkg.require, ...pkg['require-dev'] })) {
-      out.push(record(name, version ?? 'latest'))
+      out.push(record(name, version ?? 'latest', 'composer.json'))
     }
   } catch {
     // ignore malformed composer.json

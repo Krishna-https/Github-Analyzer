@@ -2,8 +2,61 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readCachedBundle } from '@/lib/analysis/cache'
 import { buildDeterministicReport } from '@/lib/analysis/deepFallback'
 import { isLlmEnabled } from '@/lib/analysis/llm'
+import type { DeepAnalysis } from '@/lib/types'
 
 export const runtime = 'nodejs'
+
+/**
+ * Older cached reports (and hand-edited caches) can be missing sections that the
+ * UI renders unconditionally. Normalise the arrays at the API boundary so the
+ * page never crashes on a partial report.
+ */
+function normalizeReport(report: DeepAnalysis | null): DeepAnalysis | null {
+  if (!report) return null
+  return {
+    ...report,
+    purpose: report.purpose ?? '',
+    whatItDoes: report.whatItDoes ?? '',
+    architecture: (report.architecture ?? []).map((a) => ({
+      ...a,
+      responsibility: a.responsibility ?? '',
+      connectsTo: a.connectsTo ?? [],
+      files: a.files ?? [],
+    })),
+    dataFlow: (report.dataFlow ?? []).map((step) => ({
+      ...step,
+      detail: step.detail ?? '',
+      files: step.files ?? [],
+    })),
+    domainModel: (report.domainModel ?? []).map((entity) => ({
+      ...entity,
+      fields: entity.fields ?? [],
+      relations: entity.relations ?? [],
+    })),
+    keyModules: (report.keyModules ?? []).map((m) => ({
+      ...m,
+      role: m.role ?? '',
+      keyFiles: m.keyFiles ?? [],
+      symbols: m.symbols ?? [],
+    })),
+    techStack: (report.techStack ?? []).map((t) => ({
+      ...t,
+      role: t.role ?? '',
+      why: t.why ?? '',
+    })),
+    howToRun: report.howToRun ?? [],
+    onboarding: report.onboarding ?? [],
+    strengths: report.strengths ?? [],
+    risks: report.risks ?? [],
+    hotspots: report.hotspots ?? [],
+    contributors: report.contributors ?? [],
+    commitCount: report.commitCount ?? null,
+    model: report.model ?? 'AI',
+    generatedAt: report.generatedAt ?? new Date().toISOString(),
+    totalDependencies: report.totalDependencies ?? 0,
+    dependencyHealth: report.dependencyHealth ?? { healthy: 0, review: 0, vulnerable: 0 },
+  }
+}
 
 /**
  * The full deep-analysis report for a container's cached bundle.
@@ -25,11 +78,12 @@ export async function GET(request: NextRequest) {
   }
 
   const bundle = readCachedBundle(containerId)
-  const deepAnalysis = bundle?.deepAnalysis ?? (bundle?.facts ? buildDeterministicReport(bundle.facts, bundle.computedAt) : null)
+  const report =
+    bundle?.deepAnalysis ?? (bundle?.facts ? buildDeterministicReport(bundle.facts, bundle.computedAt) : null)
 
   return NextResponse.json({
     containerId,
-    deepAnalysis,
+    deepAnalysis: normalizeReport(report),
     aiAvailable: isLlmEnabled(),
   })
 }

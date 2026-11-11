@@ -158,12 +158,51 @@ export interface FunctionRecord {
   calls: number
   status: FunctionStatus
   module: string
+  /** 1-based declaration line, when known (real analysis). */
+  line?: number
+  language?: string
+  /** Function/method/component, as detected by the parser. */
+  kind?: string
 }
 
 /** A real module plus the functions detected inside it. */
 export interface ModuleWithFunctions {
   module: ModuleRecord
   functions: FunctionRecord[]
+}
+
+/**
+ * The real Code Analysis report for a cloned container, served by /api/code.
+ * Every number is derived from the repository's source: the function table,
+ * complexity distribution, call counts and high-complexity findings all come
+ * from the same per-function parse.
+ */
+export interface CodeAnalysisReport {
+  containerId: string
+  computedAt: string
+  stats: {
+    files: number
+    sourceFiles: number
+    lines: number
+    functions: number
+    classes: number
+    imports: number
+    /** HTTP routes / pages detected (the repo's API surface). */
+    apiCalls: number
+    /** Distinct external dependencies from the manifests. */
+    dependencies: number
+    /** Internal file-to-file import edges. */
+    internalImports: number
+  }
+  /** Per-function complexity distribution (same buckets as Overview). */
+  buckets: ComplexityBucket[]
+  /** Total functions that contributed to `buckets`. */
+  functionsAnalyzed: number
+  /** Function table, highest complexity first. */
+  functions: FunctionRecord[]
+  /** Functions above the High threshold, with exact file/line evidence. */
+  findings: ComplexityFinding[]
+  languages: LanguageShare[]
 }
 
 export interface ComplexityBucket {
@@ -191,6 +230,8 @@ export interface ComplexityFinding {
   suggestion: string
   ruleId: string
   snippet: CodeSnippet
+  /** Real analysis carries the language/kind for the finding detail. */
+  language?: string
 }
 
 export interface SecurityFinding {
@@ -213,6 +254,8 @@ export interface DependencyRecord {
   category: string
   status: 'healthy' | 'review' | 'vulnerable'
   reason?: string
+  /** Manifest the dependency was parsed from (e.g. package.json), when known. */
+  manifest?: string
 }
 
 export interface Issue {

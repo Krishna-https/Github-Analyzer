@@ -29,13 +29,13 @@ function FileChips({ files }: { files: string[] }) {
   if (files.length === 0) return null
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
-      {files.slice(0, 8).map((f) => {
+      {files.slice(0, 8).map((f, i) => {
         const match = f.match(/^(.*):(\d+)$/)
         const path = match ? match[1] : f
         const line = match ? match[2] : null
         return (
           <span
-            key={f}
+            key={`${f}-${i}`}
             title={f}
             className="flex items-center gap-1 rounded-md border border-edge bg-card px-1.5 py-0.5 font-mono text-[10px] text-white/55"
           >
@@ -226,7 +226,9 @@ function DeepAnalysisPane({ containerId }: { containerId: string | null }) {
     )
   }
 
-  const isAi = report.source === 'ai'
+  // Older cached AI reports predate the `source` field; only an explicit
+  // `deterministic` marker means the report was built without a model.
+  const isAi = report.source !== 'deterministic'
 
   return (
     <div className="space-y-6 animate-fade-up">
@@ -263,14 +265,14 @@ function DeepAnalysisPane({ containerId }: { containerId: string | null }) {
             <SectionTitle>Architecture</SectionTitle>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {report.architecture.map((a) => (
-              <div key={a.component} className="rounded-xl border border-edge bg-shell p-4">
+            {report.architecture.map((a, i) => (
+              <div key={`${a.component}-${i}`} className="rounded-xl border border-edge bg-shell p-4">
                 <div className="text-sm font-semibold text-white/90">{a.component}</div>
                 <p className="mt-1 text-xs leading-relaxed text-white/60">{a.responsibility}</p>
                 {a.connectsTo.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {a.connectsTo.slice(0, 6).map((c) => (
-                      <span key={c} className="rounded-md border border-edge bg-card px-1.5 py-0.5 text-[10px] text-white/50">
+                    {a.connectsTo.slice(0, 6).map((c, ci) => (
+                      <span key={`${c}-${ci}`} className="rounded-md border border-edge bg-card px-1.5 py-0.5 text-[10px] text-white/50">
                         → {c}
                       </span>
                     ))}
@@ -315,8 +317,8 @@ function DeepAnalysisPane({ containerId }: { containerId: string | null }) {
             <SectionTitle>Domain Model</SectionTitle>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {report.domainModel.map((entity) => (
-              <div key={entity.entity} className="rounded-xl border border-edge bg-shell p-4">
+            {report.domainModel.map((entity, ei) => (
+              <div key={`${entity.entity}-${ei}`} className="rounded-xl border border-edge bg-shell p-4">
                 <div className="text-sm font-semibold text-white/90">{entity.entity}</div>
                 {entity.file && (
                   <div className="mt-0.5 truncate font-mono text-[10px] text-white/40" title={`${entity.file}${entity.line ? `:${entity.line}` : ''}`}>
@@ -326,9 +328,9 @@ function DeepAnalysisPane({ containerId }: { containerId: string | null }) {
                 )}
                 {entity.fields.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {entity.fields.slice(0, 12).map((f) => (
+                    {entity.fields.slice(0, 12).map((f, fi) => (
                       <span
-                        key={f}
+                        key={`${f}-${fi}`}
                         title={f}
                         className="max-w-full whitespace-normal break-words rounded border border-edge bg-card px-1.5 py-0.5 font-mono text-[10px] text-white/50"
                       >
@@ -351,16 +353,16 @@ function DeepAnalysisPane({ containerId }: { containerId: string | null }) {
         <Card>
           <SectionTitle>Key Modules</SectionTitle>
           <div className="mt-4 space-y-3">
-            {report.keyModules.map((m) => (
-              <div key={m.name} className="rounded-xl border border-edge bg-shell p-4">
+            {report.keyModules.map((m, mi) => (
+              <div key={`${m.name}-${mi}`} className="rounded-xl border border-edge bg-shell p-4">
                 <div className="text-sm font-semibold text-white/90">{m.name}</div>
                 <p className="mt-1 text-xs leading-relaxed text-white/60">{m.role}</p>
                 <FileChips files={m.keyFiles} />
                 {m.symbols && m.symbols.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {m.symbols.slice(0, 10).map((s) => (
+                    {m.symbols.slice(0, 10).map((s, si) => (
                       <span
-                        key={s}
+                        key={`${s}-${si}`}
                         title="Declared symbol"
                         className="rounded border border-edge bg-card px-1.5 py-0.5 font-mono text-[10px] text-white/50"
                       >
@@ -387,9 +389,9 @@ function DeepAnalysisPane({ containerId }: { containerId: string | null }) {
             likeliest places for hidden risk.
           </p>
           <div className="mt-4 space-y-2">
-            {report.hotspots.map((h) => (
+            {report.hotspots.map((h, i) => (
               <div
-                key={h.file}
+                key={`${h.file}-${i}`}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-edge bg-shell px-3 py-2"
               >
                 <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-white/70" title={h.file}>
@@ -429,8 +431,8 @@ function DeepAnalysisPane({ containerId }: { containerId: string | null }) {
         <Card>
           <SectionTitle>Technology</SectionTitle>
           <div className="mt-4 space-y-2.5">
-            {report.techStack.map((t) => (
-              <div key={t.name} className="flex items-start gap-2.5 text-xs">
+            {report.techStack.map((t, ti) => (
+              <div key={`${t.name}-${ti}`} className="flex items-start gap-2.5 text-xs">
                 <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                 <span>
                   <span className="font-semibold text-white/85">{t.name}</span>
@@ -452,21 +454,21 @@ function DeepAnalysisPane({ containerId }: { containerId: string | null }) {
           </div>
           <div className="mt-4">
             <div className="flex flex-wrap gap-2 text-xs text-white/55">
-              <span className="rounded-bg-primary/10 px-2 py-1">
+              <span className="rounded bg-primary/10 px-2 py-1">
                 {report.totalDependencies} total
               </span>
               {report.dependencyHealth.vulnerable > 0 && (
-                <span className="rounded-bg-orange-500/30 px-2 py-1 text-orange-300">
+                <span className="rounded bg-orange-500/30 px-2 py-1 text-orange-300">
                   {report.dependencyHealth.vulnerable} vulnerable
                 </span>
               )}
               {report.dependencyHealth.review > 0 && (
-                <span className="rounded-bg-amber-500/30 px-2 py-1 text-amber-300">
+                <span className="rounded bg-amber-500/30 px-2 py-1 text-amber-300">
                   {report.dependencyHealth.review} review
                 </span>
               )}
               {report.dependencyHealth.healthy > 0 && (
-                <span className="rounded-bg-emerald-500/30 px-2 py-1 text-emerald-300">
+                <span className="rounded bg-emerald-500/30 px-2 py-1 text-emerald-300">
                   {report.dependencyHealth.healthy} healthy
                 </span>
               )}

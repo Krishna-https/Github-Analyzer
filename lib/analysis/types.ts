@@ -4,9 +4,11 @@ import type {
   AnalysisOverview,
   ComplexityBucket,
   DeepAnalysis,
+  DependencyRecord,
   EvidenceItem,
   LanguageShare,
   Repository,
+  SecurityFinding,
 } from '@/lib/types'
 
 /* ------------------------------------------------------------------ */
@@ -93,6 +95,19 @@ export interface ParsedFile {
   importSources?: string[]
   /** Declared function/class names (capped), for module summaries. */
   symbols?: string[]
+  /** Per-function metrics (name, line, complexity, calls, nesting), capped. */
+  functionDetails?: ParsedFunction[]
+}
+
+/** A detected function plus the metrics the Code Analysis page renders. */
+export interface ParsedFunction {
+  name: string
+  line: number
+  endLine: number
+  lines: number
+  complexity: number
+  calls: number
+  nesting: number
 }
 
 /* ------------------------------------------------------------------ */
@@ -282,7 +297,7 @@ export interface ProjectFacts {
  * instead of being served with missing fields. Old bundles stay readable; the
  * API just treats them as stale.
  */
-export const ANALYSIS_SCHEMA_VERSION = 2
+export const ANALYSIS_SCHEMA_VERSION = 6
 
 export interface AnalysisBundle {
   containerId: string
@@ -295,6 +310,10 @@ export interface AnalysisBundle {
   files: ParsedFile[]
   modules: ModuleInfo[]
   topLevelDirs: string[]
+  /** Real security findings scanned from the cloned source (Security page). */
+  security?: SecurityFinding[]
+  /** Real dependencies parsed from the repo's manifests (Dependencies page). */
+  dependencies?: DependencyRecord[]
   /** Deterministic facts behind the overview; used to (re)build the narrative. */
   facts?: ProjectFacts
   /** The full AI report served by /api/deep-analysis (once generated). */

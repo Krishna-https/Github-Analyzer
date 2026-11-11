@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Book } from 'lucide-react'
 import { SeverityBadge } from '@/components/ui/Badge'
@@ -10,10 +10,8 @@ export function RuleGrid({ groups }: { groups: { label: string; rules: Rule[] }[
   const params = useSearchParams()
   const activeRuleId = params.get('rule')
   const containerRef = useRef<HTMLDivElement>(null)
-  const [highlight, setHighlight] = useState<string | null>(activeRuleId)
 
   useEffect(() => {
-    setHighlight(activeRuleId)
     if (activeRuleId) {
       const el = document.getElementById('rule-' + activeRuleId)
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -27,7 +25,7 @@ export function RuleGrid({ groups }: { groups: { label: string; rules: Rule[] }[
           <div className="text-[10px] font-bold uppercase tracking-wider text-white/30">{g.label} Rules</div>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {g.rules.map((r) => {
-              const isHL = highlight === r.id
+              const isHL = activeRuleId === r.id
               return (
                 <div
                   key={r.id}

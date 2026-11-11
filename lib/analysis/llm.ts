@@ -64,7 +64,7 @@ export function isLlmEnabled(): boolean {
 function moduleEdges(facts: ProjectFacts): string[] {
   const moduleOf = (p: string) => (p.includes('/') ? p.slice(0, p.indexOf('/')) : '(root)')
   const seen = new Set<string>()
-  for (const edge of facts.insights.imports) {
+  for (const edge of facts.insights?.imports ?? []) {
     const from = moduleOf(edge.from)
     const to = moduleOf(edge.to)
     if (from !== to) seen.add(`${from} → ${to}`)
@@ -74,7 +74,7 @@ function moduleEdges(facts: ProjectFacts): string[] {
 
 /** The JSON-safe projection of the facts sent to the model. */
 function factsPayload(facts: ProjectFacts) {
-  const { insights } = facts
+  const insights = facts.insights
   return {
     repository: {
       fullName: facts.repo.fullName,
@@ -102,38 +102,43 @@ function factsPayload(facts: ProjectFacts) {
     topLevelDirs: facts.topLevelDirs,
     entryPoints: facts.entryPoints,
     keyDependencies: facts.keyDependencies,
-    moduleSummaries: insights.moduleSummaries.slice(0, 20),
+    moduleSummaries: insights?.moduleSummaries?.slice(0, 20) ?? [],
     moduleImportGraph: moduleEdges(facts),
-    fileImports: insights.imports.slice(0, 80).map((e) => `${e.from} → ${e.to}${e.line ? `:${e.line}` : ''}`),
-    routes: insights.routes.map(
-      (r) => `${r.method} ${r.path} (${r.file}${r.line ? `:${r.line}` : ''}${r.handler ? `, ${r.handler}` : ''})`
-    ),
-    models: insights.models.map((m) => ({
-      name: m.name,
-      kind: m.kind,
-      file: m.file,
-      line: m.line,
-      fields: m.fields,
-    })),
-    symbols: insights.symbols.slice(0, 150).map((s) => `${s.file}:${s.line} ${s.kind} ${s.name}`),
-    callGraph: insights.calls
-      .slice(0, 150)
-      .map((c) => `${c.from.split(':').slice(-1)[0]} → ${c.to.split(':').slice(-1)[0]} (${c.file}:${c.line})`),
+    fileImports:
+      insights?.imports?.slice(0, 80).map((e) => `${e.from} → ${e.to}${e.line ? `:${e.line}` : ''}`) ?? [],
+    routes:
+      insights?.routes?.map(
+        (r) => `${r.method} ${r.path} (${r.file}${r.line ? `:${r.line}` : ''}${r.handler ? `, ${r.handler}` : ''})`
+      ) ?? [],
+    models:
+      insights?.models?.map((m) => ({
+        name: m.name,
+        kind: m.kind,
+        file: m.file,
+        line: m.line,
+        fields: m.fields,
+      })) ?? [],
+    symbols: insights?.symbols?.slice(0, 150).map((s) => `${s.file}:${s.line} ${s.kind} ${s.name}`) ?? [],
+    callGraph:
+      insights?.calls
+        ?.slice(0, 150)
+        .map((c) => `${c.from.split(':').slice(-1)[0]} → ${c.to.split(':').slice(-1)[0]} (${c.file}:${c.line})`) ?? [],
     git: {
-      commitCount: insights.git?.commitCount ?? null,
-      contributors: insights.git?.contributors ?? [],
-      hotspots: insights.git?.hotspots ?? [],
+      commitCount: insights?.git?.commitCount ?? null,
+      contributors: insights?.git?.contributors ?? [],
+      hotspots: insights?.git?.hotspots ?? [],
     },
-    config: insights.config,
+    config: insights?.config ?? null,
     readmeExcerpt: facts.readmeExcerpt,
-    fileExcerpts: insights.excerpts.map((e) => ({
-      path: e.path,
-      reason: e.reason,
-      truncated: e.truncated,
-      startLine: e.startLine ?? 1,
-      endLine: e.endLine,
-      content: e.content,
-    })),
+    fileExcerpts:
+      insights?.excerpts?.map((e) => ({
+        path: e.path,
+        reason: e.reason,
+        truncated: e.truncated,
+        startLine: e.startLine ?? 1,
+        endLine: e.endLine,
+        content: e.content,
+      })) ?? [],
   }
 }
 
@@ -370,14 +375,13 @@ export async function generateDeepAnalysis(facts: ProjectFacts): Promise<DeepAna
   const provider = resolveProvider()
   if (!provider) return null
 
-  const user = `Repository facts (JSON):\n${JSON.stringify(
-    factsPayload(facts)
-  )}\n\nProduce the deep analysis JSON described in your instructions.`
-
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
   try {
+    const user = `Repository facts (JSON):\n${JSON.stringify(
+      factsPayload(facts)
+    )}\n\nProduce the deep analysis JSON described in your instructions.`
     const text =
       provider.kind === 'anthropic'
         ? await callAnthropic(provider, user, controller.signal)
@@ -394,6 +398,8 @@ export async function generateDeepAnalysis(facts: ProjectFacts): Promise<DeepAna
       hotspots: report.hotspots?.length ? report.hotspots : facts.insights?.git?.hotspots?.slice(0, 8),
       contributors: facts.insights?.git?.contributors?.slice(0, 6),
       commitCount: facts.insights?.git?.commitCount ?? null,
+      totalDependencies: facts.totalDependencies,
+      dependencyHealth: facts.dependencyHealth,
     }
   } catch (err) {
     console.warn('deep analysis failed:', err instanceof Error ? err.message : err)

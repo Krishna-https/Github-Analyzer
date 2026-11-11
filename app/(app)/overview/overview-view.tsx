@@ -378,7 +378,7 @@ function OverviewPane({ containerId }: { containerId: string | null }) {
           </div>
           <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-edge pt-5">
             <Link
-              href="/deep-analysis"
+              href={containerId ? `/deep-analysis?containerId=${encodeURIComponent(containerId)}` : '/deep-analysis'}
               className="flex items-center gap-1.5 text-xs font-semibold text-primary transition-colors hover:text-primary/80"
             >
               <Sparkles className="h-3.5 w-3.5" /> Deep analysis <ArrowRight className="h-3.5 w-3.5" />

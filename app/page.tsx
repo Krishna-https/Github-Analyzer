@@ -9,7 +9,6 @@ import {
   ShieldAlert,
   Github,
   ArrowRight,
-  Wand2,
   FileCode,
   Boxes,
   Package,

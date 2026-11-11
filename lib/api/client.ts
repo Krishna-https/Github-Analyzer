@@ -2,6 +2,7 @@ import type {
   AnalysisOverview,
   AnalysisStep,
   ArchitectureNode,
+  CodeAnalysisReport,
   ComplexityBucket,
   ComplexityFinding,
   DeepAnalysis,
@@ -135,6 +136,133 @@ export const api = {
 
     const data = (await res.json()) as { modules?: ModuleWithFunctions[] }
     return data.modules ?? []
+  },
+
+  /**
+   * The real Code Analysis report for a container, from /api/code. The server
+   * aggregates the per-function metrics captured while parsing the cloned
+   * source, so the function table, complexity buckets and high-complexity
+   * findings are all derived from the actual repository.
+   *
+   * Throws FileTreeError so callers can distinguish a stale container (404),
+   * an unanalyzable repo (400/502), or an unreachable server (0).
+   */
+  async getCodeAnalysis(containerId: string): Promise<CodeAnalysisReport> {
+    let res: Response
+    try {
+      res = await fetch(`/api/code?containerId=${encodeURIComponent(containerId)}`)
+    } catch {
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    if (!res.ok) {
+      let message = `Code analysis request failed with status ${res.status}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) message = body.error
+      } catch {
+        // Non-JSON error body; keep the status-based message.
+      }
+      throw new FileTreeError(message, res.status)
+    }
+
+    const data = (await res.json()) as { report?: CodeAnalysisReport }
+    if (!data.report) throw new FileTreeError('Code analysis returned no report data.', 502)
+    return data.report
+  },
+
+  /**
+   * The real security findings for a container, from /api/security. The server
+   * scans the cached analysis bundle (computing it once if this is the first
+   * request), so every finding is derived from the cloned source rather than the
+   * bundled sample data.
+   *
+   * Throws FileTreeError so callers can distinguish a stale container (404),
+   * an unanalyzable repo (400/502), or an unreachable server (0).
+   */
+  async getSecurityFindingsFromContainer(containerId: string): Promise<SecurityFinding[]> {
+    let res: Response
+    try {
+      res = await fetch(`/api/security?containerId=${encodeURIComponent(containerId)}`)
+    } catch {
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    if (!res.ok) {
+      let message = `Security request failed with status ${res.status}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) message = body.error
+      } catch {
+        // Non-JSON error body; keep the status-based message.
+      }
+      throw new FileTreeError(message, res.status)
+    }
+
+    const data = (await res.json()) as { findings?: SecurityFinding[] }
+    return data.findings ?? []
+  },
+
+  /**
+   * The real dependency list for a container, from /api/dependencies. The server
+   * parses the repo's manifests into the cached analysis bundle, so every entry
+   * carries the declared name/version rather than the bundled sample data.
+   *
+   * Throws FileTreeError so callers can distinguish a stale container (404),
+   * an unanalyzable repo (400/502), or an unreachable server (0).
+   */
+  async getDependenciesFromContainer(containerId: string): Promise<DependencyRecord[]> {
+    let res: Response
+    try {
+      res = await fetch(`/api/dependencies?containerId=${encodeURIComponent(containerId)}`)
+    } catch {
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    if (!res.ok) {
+      let message = `Dependencies request failed with status ${res.status}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) message = body.error
+      } catch {
+        // Non-JSON error body; keep the status-based message.
+      }
+      throw new FileTreeError(message, res.status)
+    }
+
+    const data = (await res.json()) as { dependencies?: DependencyRecord[] }
+    return data.dependencies ?? []
+  },
+
+  /**
+   * The real issue list for a container, from /api/issues. The server aggregates
+   * the security/complexity/dependency findings from the cached analysis bundle,
+   * so every row points at the cloned source rather than the bundled sample data.
+   *
+   * Throws FileTreeError so callers can distinguish a stale container (404),
+   * an unanalyzable repo (400/502), or an unreachable server (0).
+   */
+  async getIssuesFromContainer(containerId: string): Promise<Issue[]> {
+    let res: Response
+    try {
+      res = await fetch(`/api/issues?containerId=${encodeURIComponent(containerId)}`)
+    } catch {
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    if (!res.ok) {
+      let message = `Issues request failed with status ${res.status}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) message = body.error
+      } catch {
+        // Non-JSON error body; keep the status-based message.
+      }
+      throw new FileTreeError(message, res.status)
+    }
+
+    const data = (await res.json()) as { issues?: Issue[] }
+    return data.issues ?? []
   },
 
   /**

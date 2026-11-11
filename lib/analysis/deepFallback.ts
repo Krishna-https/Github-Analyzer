@@ -132,9 +132,9 @@ function modulesOf(facts: ProjectFacts): ModuleView[] {
           name: s.name,
           files: s.files,
           functions: s.functions,
-          keyFiles: s.topFiles,
-          importsFrom: s.importsFrom,
-          symbols: s.symbols,
+          keyFiles: s.topFiles ?? [],
+          importsFrom: s.importsFrom ?? [],
+          symbols: s.symbols ?? [],
         }))
       : (facts.modules ?? []).map((m) => ({
           name: m.name,
@@ -330,15 +330,16 @@ function buildDomainModel(facts: ProjectFacts): DeepAnalysis['domainModel'] {
   const names = new Set(models.map((m) => m.name))
 
   return models.slice(0, 12).map((model) => {
+    const fields = model.fields ?? []
     const relations: string[] = []
-    for (const field of model.fields) {
+    for (const field of fields) {
       const [fieldName, rawType] = field.split(':')
       const baseType = (rawType ?? '').trim().replace(/[[\]?]/g, '').split(/[<\s|]/)[0]
       if (baseType && baseType !== model.name && names.has(baseType)) {
         relations.push(`${fieldName.trim()} → ${baseType}`)
       }
     }
-    return { entity: model.name, fields: model.fields, relations, file: model.file, line: model.line }
+    return { entity: model.name, fields, relations, file: model.file, line: model.line }
   })
 }
 
@@ -423,7 +424,7 @@ function buildOnboarding(facts: ProjectFacts, modules: ModuleView[]): string[] {
   const steps: string[] = []
 
   for (const entry of facts.entryPoints.slice(0, 3)) {
-    const symbol = facts.insights?.symbols.find(
+    const symbol = facts.insights?.symbols?.find(
       (s) => s.file === entry && (s.exported || s.kind === 'component' || s.name === 'default')
     )
     steps.push(`Start at ${entry}${symbol ? `:${symbol.line}` : ''} — a detected application entry point.`)
@@ -446,8 +447,8 @@ function buildOnboarding(facts: ProjectFacts, modules: ModuleView[]): string[] {
 
 function buildStrengths(facts: ProjectFacts, modules: ModuleView[]): string[] {
   const out: string[] = []
-  const routes = facts.insights?.routes.length ?? 0
-  const models = facts.insights?.models.length ?? 0
+  const routes = facts.insights?.routes?.length ?? 0
+  const models = facts.insights?.models?.length ?? 0
 
   if (facts.tests > 0) out.push(`Ships ${facts.tests} test file${plural(facts.tests)}, giving the project some safety net.`)
   if (facts.lowComplexityPct >= 70) out.push(`${facts.lowComplexityPct}% of functions are low-complexity, suggesting readable control flow.`)
@@ -461,7 +462,7 @@ function buildStrengths(facts: ProjectFacts, modules: ModuleView[]): string[] {
 
   const git = facts.insights?.git
   if (git?.commitCount && git.commitCount > 0) {
-    const contributors = git.contributors.length
+    const contributors = git.contributors?.length ?? 0
     out.push(
       `${git.commitCount} commit${plural(git.commitCount)} of history are available${
         contributors ? ` from ${contributors} contributor${plural(contributors)}` : ''
@@ -474,7 +475,7 @@ function buildStrengths(facts: ProjectFacts, modules: ModuleView[]): string[] {
 
 function buildRisks(facts: ProjectFacts): string[] {
   const out: string[] = []
-  const routes = facts.insights?.routes.length ?? 0
+  const routes = facts.insights?.routes?.length ?? 0
 
   if (facts.repo.sourceFiles === 0) {
     out.push('No conventional source files were detected; the analyzer cannot trace application behaviour.')
@@ -525,6 +526,8 @@ export function buildDeterministicReport(facts: ProjectFacts, generatedAt = new 
     hotspots: facts.insights?.git?.hotspots?.slice(0, 8),
     contributors: facts.insights?.git?.contributors?.slice(0, 6),
     commitCount: facts.insights?.git?.commitCount ?? null,
+    totalDependencies: facts.totalDependencies,
+    dependencyHealth: facts.dependencyHealth,
     model: 'static analysis',
     generatedAt,
     source: 'deterministic',

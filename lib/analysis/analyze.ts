@@ -7,6 +7,7 @@ import { extractCodeInsights } from './extract'
 import { computeLanguageShares, languageInfo } from './languages'
 import { parseDependencies } from './manifests'
 import { parseSource } from './parser'
+import { scanSecurity } from './security'
 import { buildSummary } from './summary'
 import {
   ANALYSIS_SCHEMA_VERSION,
@@ -193,7 +194,7 @@ export function analyzeDump(containerId: string, dump: AnalysisDump): AnalysisBu
 
   for (const file of files) {
     totalFiles++
-    const info = languageInfo(file.relPath)
+    const info = languageInfo(file.relPath, file.content)
     const classification = classifyFile(file)
     classified.set(file.relPath, classification.category)
     if (info.isSource) sourceFiles++
@@ -213,6 +214,7 @@ export function analyzeDump(containerId: string, dump: AnalysisDump): AnalysisBu
       imports: parsed.imports,
       importSources: parsed.importSources,
       symbols: [...parsed.classNames, ...parsed.functionNames].slice(0, 20),
+      functionDetails: isSource ? parsed.functionDetails : [],
     })
     totalFunctions += isSource ? parsed.functions : 0
     totalClasses += isSource ? parsed.classes : 0
@@ -357,6 +359,8 @@ export function analyzeDump(containerId: string, dump: AnalysisDump): AnalysisBu
     files: parsedFiles,
     modules,
     topLevelDirs,
+    security: scanSecurity(files),
+    dependencies: deps,
     facts,
   }
 }

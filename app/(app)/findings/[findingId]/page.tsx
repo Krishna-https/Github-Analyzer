@@ -1,14 +1,103 @@
 import Link from 'next/link'
 import { ArrowLeft, FileCode, CheckCircle2, Book } from 'lucide-react'
 import { api } from '@/lib/api/client'
+import { readCachedBundle } from '@/lib/analysis/cache'
+import { findCodeFinding } from '@/lib/analysis/code'
+import { findSecurityFinding } from '@/lib/analysis/security'
 import { Card, SectionTitle } from '@/components/ui/Card'
 import { SeverityBadge } from '@/components/ui/Badge'
 import { CodeView } from '@/components/ui/CodeView'
 import { ReviewedToggle } from '@/components/findings/ReviewedToggle'
 
-export default async function FindingDetail({ params }: { params: Promise<{ findingId: string }> }) {
+type FindingDetailData = NonNullable<ReturnType<typeof api.getFindingDetail>>
+
+export default async function FindingDetail({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ findingId: string }>
+  searchParams: Promise<{ containerId?: string }>
+}) {
   const { findingId } = await params
-  const detail = api.getFindingDetail(findingId)
+  const { containerId } = await searchParams
+
+  // Real security/complexity findings live in the cached analysis bundle. When
+  // the container is known, resolve the finding from the source-derived report
+  // so the page never shows sample evidence for a real repository.
+  let detail: FindingDetailData | null = null
+  if (containerId) {
+    const bundle = readCachedBundle(containerId)
+
+    const security = bundle ? findSecurityFinding(bundle, findingId) : null
+    if (security) {
+      detail = {
+        id: security.id,
+        title: security.title,
+        severity: security.severity,
+        file: security.file,
+        line: security.line,
+        category: 'Security',
+        label: 'Rule Engine Result',
+        account: security.evidence,
+        reason: [security.explanation],
+        fix: { label: security.solution, code: security.snippet },
+        ruleId: security.ruleId,
+        fixedCode: security.fixedSnippet,
+      }
+    }
+
+    const dep = !detail ? bundle?.dependencies?.find((d) => d.name === findingId) : undefined
+    if (dep) {
+      detail = {
+        id: dep.name,
+        title: `${dep.name} ${dep.status}`,
+        severity: dep.status === 'vulnerable' ? 'High' : dep.status === 'review' ? 'Medium' : 'Low',
+        file: dep.manifest ?? 'manifest',
+        line: 1,
+        category: 'Dependencies',
+        label: 'Dependency Analysis',
+        account: [
+          `Version: ${dep.version}`,
+          `Category: ${dep.category}`,
+          `Manifest: ${dep.manifest ?? 'unknown'}`,
+        ],
+        reason: dep.reason ? [dep.reason] : ['Status is healthy.'],
+        fix: {
+          label:
+            dep.status === 'vulnerable'
+              ? 'Upgrade to patched version'
+              : dep.status === 'review'
+                ? 'Pin to an exact version'
+                : 'No action required',
+        },
+      }
+    }
+
+    const finding = !detail && bundle ? findCodeFinding(bundle, findingId) : null
+    if (finding) {
+      detail = {
+        id: finding.id,
+        title: `${finding.functionName} complexity`,
+        severity: finding.status,
+        file: finding.file,
+        line: finding.line,
+        category: 'Complexity',
+        label: finding.language ? `Static analysis · ${finding.language}` : 'Static analysis',
+        account: [
+          `Cyclomatic complexity: ${finding.cyclomatic}`,
+          `Nesting depth: ${finding.nestingDepth}`,
+          `Lines: ${finding.lineCount}`,
+          `Rule: ${finding.ruleId}`,
+        ],
+        reason: [finding.reason],
+        fix: { label: finding.suggestion },
+        ruleId: finding.ruleId,
+      }
+    }
+  }
+
+  const isReal = detail !== null
+  if (!detail) detail = api.getFindingDetail(findingId)
 
   if (!detail) {
     return (
@@ -147,7 +236,11 @@ export default async function FindingDetail({ params }: { params: Promise<{ find
                 </Link>
               )}
               <Link
-                href={`/explorer?file=${encodeURIComponent(detail.file)}`}
+                href={
+                  isReal && containerId
+                    ? `/explorer?containerId=${encodeURIComponent(containerId)}&file=${encodeURIComponent(`/workspace/repo/${detail.file}`)}`
+                    : `/explorer?file=${encodeURIComponent(detail.file)}`
+                }
                 className="flex w-full items-center justify-center gap-2 rounded-xl border border-edge px-4 py-2.5 text-xs font-semibold text-white/70 transition-colors hover:border-primary/30 hover:text-primary"
               >
                 <FileCode className="h-3.5 w-3.5" /> View File
