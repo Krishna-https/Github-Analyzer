@@ -124,6 +124,44 @@ export interface AnalysisStep {
   detail: string
 }
 
+/** A repository file that has landed on disk inside the runner container. */
+export interface CloneFileEntry {
+  /** Repo-relative path, e.g. `src/app/page.tsx`. */
+  path: string
+  bytes: number
+  /** Seconds since epoch, from the container's `stat`. */
+  mtime: number
+}
+
+/** Latest phase reported by `git clone --progress`. */
+export interface CloneProgress {
+  phase: string
+  percent: number
+  /** Everything git printed after the percentage (size, speed, done). */
+  detail: string | null
+}
+
+/**
+ * Live clone telemetry from /api/clone/status. While the runner is fetching,
+ * `bytes`/`fileCount` grow and `files` carries the most recently written
+ * entries so the Analyze page can show each file as it is pulled.
+ */
+export interface CloneStatus {
+  state: 'cloning' | 'done' | 'failed'
+  exitCode: number | null
+  /** Disk usage of /workspace/repo, including git metadata. */
+  bytes: number
+  /** Files in the working tree (`.git` internals excluded). */
+  fileCount: number
+  /** Newest files first, capped server-side. */
+  files: CloneFileEntry[]
+  progress: CloneProgress | null
+  /** Clone failure reason, when `state` is `failed`. */
+  error: string | null
+  /** Last few meaningful lines from the git progress log. */
+  log: string[]
+}
+
 export interface ModuleRecord {
   id: string
   name: string

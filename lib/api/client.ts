@@ -2,6 +2,7 @@ import type {
   AnalysisOverview,
   AnalysisStep,
   ArchitectureNode,
+  CloneStatus,
   CodeAnalysisReport,
   ComplexityBucket,
   ComplexityFinding,
@@ -57,6 +58,43 @@ export const api = {
   async analyzeRepository(_url: string): Promise<{ steps: AnalysisStep[]; repository: Repository }> {
     await delay(200)
     return { steps: analysisSteps, repository: mockRepository }
+  },
+
+  /**
+   * Live clone telemetry for a runner container, from /api/clone/status.
+   * While the repo is being pulled this reports git's phase/percentage, the
+   * bytes on disk, the working-tree file count and the newest files, so the
+   * Analyze page can show real progress instead of a simulated script.
+   *
+   * Throws FileTreeError so callers can distinguish a stale container (404),
+   * a stopped container (409), or an unreachable server (0).
+   */
+  async getCloneStatus(containerId: string): Promise<CloneStatus> {
+    let res: Response
+
+    try {
+      res = await fetch(
+        `/api/clone/status?containerId=${encodeURIComponent(containerId)}`,
+        { cache: 'no-store' }
+      )
+    } catch {
+      throw new FileTreeError('Could not reach the server.', 0)
+    }
+
+    if (!res.ok) {
+      let message = `Clone status request failed with status ${res.status}`
+      try {
+        const body = (await res.json()) as { error?: string }
+        if (body.error) message = body.error
+      } catch {
+        // Non-JSON error body; keep the status-based message.
+      }
+      throw new FileTreeError(message, res.status)
+    }
+
+    const data = (await res.json()) as { status?: CloneStatus }
+    if (!data.status) throw new FileTreeError('Clone status returned no data.', 502)
+    return data.status
   },
 
   getRepositoryOverview(): {
